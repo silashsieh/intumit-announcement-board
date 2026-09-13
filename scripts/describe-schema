@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Print non-secret MySQL schema metadata using the protected env file.
+
+Never prints credentials, JDBC URLs with passwords, or secret file contents.
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from urllib.parse import urlparse
+
+
+def load_env(path: Path) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        env[key] = value
+    return env
+
+
+def parse_jdbc_mysql(url: str) -> tuple[str, str, str]:
+    if not url.startswith("jdbc:"):
+        raise SystemExit("DB_URL must start with jdbc:")
+    parsed = urlparse(url[len("jdbc:"):])
+    if parsed.scheme != "mysql":
+        raise SystemExit("DB_URL must be a jdbc:mysql URL")
+    host = parsed.hostname or "127.0.0.1"
+    port = str(parsed.port or 3306)
+    database = (parsed.path or "").lstrip("/")
+    if not database:
+        raise SystemExit("DB_URL must include a database name")
+    return host, port, database
+
+
+def mysql_query(cnf_path: str, sql: str) -> str:
+    completed = subprocess.run(
+        [
+            "mysql",
+            f"--defaults-extra-file={cnf_path}",
+            "--batch",
+            "--raw",
+            "-e",
+            sql,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        err = completed.stderr.strip() or "mysql query failed"
+        # Never echo the defaults file path in a way that invites cat'ing it;
+        # the file is already deleted in the caller.
+        raise RuntimeError(err.splitlines()[-1] if err else "mysql query failed")
+    return completed.stdout
+
+
+def main() -> int:
+    env_path = Path(os.environ.get(
+        "ANNOUNCEMENT_BOARD_ENV",
+        str(Path.home() / ".config/announcement-board/env"),
+    ))
+    if not env_path.is_file():
+        print(f"missing environment file: {env_path}", file=sys.stderr)
+        return 1
+    env = load_env(env_path)
+    for required in ("DB_URL", "DB_USERNAME", "DB_PASSWORD"):
+        if required not in env or not env[required]:
+            print(f"missing {required} in environment file", file=sys.stderr)
+            return 1
+    host, port, database = parse_jdbc_mysql(env["DB_URL"])
+    with tempfile.NamedTemporaryFile("w", delete=False, prefix="ab-my-", suffix=".cnf") as handle:
+        os.chmod(handle.name, 0o600)
+        handle.write("[client]\n")
+        handle.write(f"host={host}\n")
+        handle.write(f"port={port}\n")
+        handle.write(f"user={env['DB_USERNAME']}\n")
+        handle.write(f"password={env['DB_PASSWORD']}\n")
+        handle.write(f"database={database}\n")
+        cnf_path = handle.name
+    try:
+        tables = mysql_query(
+            cnf_path,
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = DATABASE() ORDER BY table_name;",
+        )
+        print("== tables ==")
+        print(tables.rstrip() or "(none)")
+
+        table_names = {
+            line.split("\t")[-1]
+            for line in tables.splitlines()[1:]
+            if line.strip()
+        }
+
+        print("== flyway ==")
+        if "flyway_schema_history" in table_names:
+            print(mysql_query(
+                cnf_path,
+                "SELECT version, description, success, installed_rank "
+                "FROM flyway_schema_history ORDER BY installed_rank;",
+            ).rstrip())
+        else:
+            print("(flyway_schema_history is absent)")
+
+        print("== announcements_ddl ==")
+        if "announcements" in table_names:
+            print(mysql_query(cnf_path, "SHOW CREATE TABLE announcements;").rstrip())
+            print("== announcements_row_count ==")
+            print(mysql_query(
+                cnf_path,
+                "SELECT COUNT(*) AS announcement_count FROM announcements;",
+            ).rstrip())
+        else:
+            print("(announcements is absent)")
+
+        print("== charset ==")
+        print(mysql_query(
+            cnf_path,
+            "SELECT schema_name, default_character_set_name, default_collation_name "
+            "FROM information_schema.schemata WHERE schema_name = DATABASE();",
+        ).rstrip())
+        if table_names:
+            print("== table_collation ==")
+            print(mysql_query(
+                cnf_path,
+                "SELECT table_name, table_collation FROM information_schema.tables "
+                "WHERE table_schema = DATABASE() ORDER BY table_name;",
+            ).rstrip())
+        return 0
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    finally:
+        try:
+            os.remove(cnf_path)
+        except OSError:
+            pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -86,7 +86,7 @@ The frontend remains a real HTTP client of the backend, but is served from the s
 - Bootstrap CSS/components
 - jQuery AJAX
 - JUnit and Spring Boot Test
-- One Flyway migration for the database schema, or a checked-in `schema.sql` if minimizing dependencies is more important
+- Flyway for versioned schema migrations (`flyway-core` and `flyway-mysql`)
 
 Spring Boot 4 and Tomcat 11 are not used: CentOS Stream 10 provides Tomcat 10.1, and Spring Boot 3.5.x is the matching supported line. Docker and Docker Compose are not part of the development or deployment workflow.
 
@@ -117,10 +117,19 @@ Only one main table is required.
 | `publish_date` | `DATE` | Required |
 | `deadline_date` | `DATE` | Required; cannot be before publish date |
 | `content` | `TEXT` | Required |
-| `created_at` | `DATETIME` | Set by the backend |
-| `updated_at` | `DATETIME` | Updated by the backend |
+| `created_at` | `DATETIME(6)` | Set by the backend on first persist |
+| `updated_at` | `DATETIME(6)` | Set by the backend on persist and every update |
 
 Default list order: `publish_date DESC, id DESC`.
+
+Schema ownership:
+
+- Flyway creates and versions the table with `db/migration/V1__create_announcements.sql`.
+- Hibernate uses `spring.jpa.hibernate.ddl-auto=validate`. It must not create or alter tables.
+- `created_at` and `updated_at` use `DATETIME(6)` so they match Hibernate's default `LocalDateTime` precision on MySQL 8.
+- A `CHECK` constraint enforces `deadline_date >= publish_date`.
+- An index on `(publish_date DESC, id DESC)` supports the default list order.
+- Do not add `schema.sql` or `data.sql` alongside Flyway.
 
 No user, role, category, history, or attachment table is needed for the minimum submission.
 
