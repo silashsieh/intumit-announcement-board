@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Run a command with DB_* variables from the protected server-side env file.
+
+Default file: ~/.config/announcement-board/env
+Override with ANNOUNCEMENT_BOARD_ENV.
+"""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+
+def load_env(path: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        env[key] = value
+    return env
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("usage: with-db-env <command> [args...]", file=sys.stderr)
+        return 2
+    env_path = Path(os.environ.get(
+        "ANNOUNCEMENT_BOARD_ENV",
+        str(Path.home() / ".config/announcement-board/env"),
+    ))
+    if not env_path.is_file():
+        print(f"missing environment file: {env_path}", file=sys.stderr)
+        return 1
+    env = load_env(env_path)
+    for required in ("DB_URL", "DB_USERNAME", "DB_PASSWORD"):
+        if required not in env or not env[required]:
+            print(f"missing {required} in {env_path}", file=sys.stderr)
+            return 1
+    if not env["DB_URL"].startswith("jdbc:"):
+        print("DB_URL must start with jdbc:", file=sys.stderr)
+        return 1
+    env.setdefault("SPRING_DATASOURCE_URL", env["DB_URL"])
+    env.setdefault("SPRING_DATASOURCE_USERNAME", env["DB_USERNAME"])
+    env.setdefault("SPRING_DATASOURCE_PASSWORD", env["DB_PASSWORD"])
+    os.execvpe(sys.argv[1], sys.argv[1:], env)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

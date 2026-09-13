@@ -73,26 +73,32 @@ The frontend remains a real HTTP client of the backend, but is served from the s
 
 ### 3.2 Technology Choices
 
-- Java 17 or a version already supported by the target server
-- A supported Spring Boot release compatible with the selected Tomcat version
+- OpenJDK 21 on CentOS Stream 10 (AppStream `java-21-openjdk-devel`)
+- Maven compiler target Java 17, so the WAR stays portable
+- Spring Boot 3.5.16, the current 3.5.x release compatible with Tomcat 10.1
+- CentOS AppStream Tomcat 10.1 as an external container
 - Spring Web MVC
 - Spring Data JPA with Hibernate as the JPA provider
 - Bean Validation
 - MySQL Connector/J
-- Maven
+- MySQL 8.4 LTS Community Server installed directly on CentOS (official EL10 repository)
+- Maven Wrapper 3.9.16
 - Bootstrap CSS/components
 - jQuery AJAX
 - JUnit and Spring Boot Test
 - One Flyway migration for the database schema, or a checked-in `schema.sql` if minimizing dependencies is more important
 
-The exact Spring Boot and Tomcat versions should be locked together after confirming the CentOS server environment.
+Spring Boot 4 and Tomcat 11 are not used: CentOS Stream 10 provides Tomcat 10.1, and Spring Boot 3.5.x is the matching supported line. Docker and Docker Compose are not part of the development or deployment workflow.
 
 ### 3.3 Deployment Shape
 
 - Package as `announcement-board.war`.
-- Deploy it to one external Tomcat instance on CentOS.
+- Build, test, and run the application on the CentOS Stream 10 development VM (`haha@192.168.64.26`).
+- Deploy the WAR to the system Tomcat 10.1 service on that VM.
 - Serve both `/index.html` and `/api/announcements` from the same WAR.
-- Supply database credentials through environment variables rather than committing passwords.
+- Supply database credentials through a mode `600` server-side environment file (`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`) rather than committing passwords.
+- Bind MySQL to `127.0.0.1`. Do not open port 3306 in the firewall.
+- Keep Tomcat's HTTP port private during development and reach it with an SSH tunnel (`-L 8080:127.0.0.1:8080`).
 - Use the context path `/announcement-board` unless the application is deployed as Tomcat's root application.
 
 An executable Spring Boot JAR with embedded Tomcat is simpler operationally, but the WAR approach is the safest interpretation of the assignment's explicit Tomcat requirement.
@@ -260,7 +266,7 @@ For a developer learning these tools while building, plan approximately 18-28 ho
 | Login and authorization | 5-8 hours |
 | HTTPS, DNS, and reverse-proxy setup | 1-3 hours, excluding infrastructure delays |
 
-The estimate assumes the CentOS host, SSH access, MySQL access, and firewall rules are already available. Waiting for infrastructure is not included.
+The estimate assumes SSH access to the CentOS Stream 10 development VM. Java, Tomcat, and MySQL are provisioned on that VM as part of Phase 1; they are not provided by Docker. Waiting for unrelated infrastructure is not included.
 
 ## 9. Implementation Order
 
@@ -269,8 +275,8 @@ The estimate assumes the CentOS host, SSH access, MySQL access, and firewall rul
 3. Implement and test CRUD plus pagination through the API.
 4. Build the Bootstrap list and modal form.
 5. Connect jQuery AJAX and handle error/empty/loading states.
-6. Package the WAR and test it on a local Tomcat-compatible environment.
-7. Deploy to CentOS and run the acceptance checklist.
+6. Package the WAR on CentOS and smoke-test it on the VM's Tomcat 10.1 service.
+7. Keep using the same CentOS VM for later phases and run the acceptance checklist there.
 8. Add README instructions and screenshots.
 9. Consider attachments only if time remains.
 
@@ -301,6 +307,6 @@ For the initial homework submission, exclude:
 - Audit history and soft delete
 - Multiple services or a separate frontend deployment
 - WebSockets or real-time updates
-- Docker/Kubernetes unless the deployment environment already requires them
+- Docker, Docker Compose, or Kubernetes
 
 These can be described in the README as future improvements without delaying the required deliverable.
