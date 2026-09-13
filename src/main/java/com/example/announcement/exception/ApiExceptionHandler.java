@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -64,7 +65,10 @@ public class ApiExceptionHandler {
 	}
 
 	@ExceptionHandler(Exception.class)
-	public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception ex) {
+	public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception ex) throws Exception {
+		if (ex instanceof ErrorResponse) {
+			throw ex;
+		}
 		log.error("Unexpected error while processing an announcement request", ex);
 		return error(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", Map.of());
 	}

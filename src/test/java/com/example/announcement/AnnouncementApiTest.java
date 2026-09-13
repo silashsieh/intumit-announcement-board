@@ -75,6 +75,12 @@ class AnnouncementApiTest {
 	}
 
 	@Test
+	void unknownPathRemains404UntilUiPhase() throws Exception {
+		mockMvc.perform(get("/"))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
 	void listDefaultsToEmptyPageMetadata() throws Exception {
 		mockMvc.perform(get(API))
 				.andExpect(status().isOk())
