@@ -4,7 +4,7 @@ Date tested: 2026-09-14
 
 Tested Git commit: `7dbdc6e97731143c094f87d5099d04a7e8059b7c` (`codex/phase-7-acceptance`)
 
-Host: CentOS Stream 10 (Coughlan) aarch64, `haha@192.168.64.26`
+Host: CentOS Stream 10 (Coughlan) aarch64, `<ssh-user>@<centos-host>`
 
 | Component | Version |
 | --- | --- |
@@ -114,7 +114,7 @@ The independent post-deploy run is recorded in Final deploy.
 Tunnel:
 
 ```bash
-ssh -N -L 8080:127.0.0.1:8080 -i ~/.ssh/id_ed25519_centos_vm haha@192.168.64.26
+ssh -N -L 8080:127.0.0.1:8080 -i "<ssh-key-path>" "<ssh-user>@<centos-host>"
 ```
 
 Browser URL: `http://localhost:8080/announcement-board/`
@@ -172,7 +172,7 @@ Recorded after the clean Phase 7 deploy. Only Tomcat is restarted; MySQL is not 
 | MySQL 3306 loopback-only | Pass: `127.0.0.1:3306` |
 | firewalld running; ports 8080 and 3306 not opened | Pass: listed ports empty; services `cockpit dhcpv6-client ssh` |
 | SELinux enforcing | Pass |
-| `/home/haha/.config/announcement-board/env` mode 600 | Pass (`haha:haha`) |
+| `~/.config/announcement-board/env` mode 600 | Pass (user-owned) |
 | `/etc/announcement-board.env` mode 600 | Pass (`root:root`) |
 | No credentials in application responses | Pass (API error bodies checked by the acceptance script) |
 
@@ -220,7 +220,7 @@ Final homework screenshots and the production deployment guide are recorded in t
 
 Date tested: 2026-09-14
 
-Host: CentOS Stream 10 (Coughlan) aarch64, `haha@192.168.64.26`
+Host: CentOS Stream 10 (Coughlan) aarch64, `<ssh-user>@<centos-host>`
 
 Phase 8 is documentation and packaging: final README, implemented-application screenshots, [`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md), and repository audit. Application behavior was not redesigned. No defects were found that required a code change.
 
@@ -257,7 +257,7 @@ A squash merge will create a different final commit hash. After merge, fast-forw
 
 ### Browser verification
 
-Tunnel: `ssh -N -L 8080:127.0.0.1:8080 -i ~/.ssh/id_ed25519_centos_vm haha@192.168.64.26`
+Tunnel: `ssh -N -L 8080:127.0.0.1:8080 -i "<ssh-key-path>" "<ssh-user>@<centos-host>"`
 
 URL: `http://localhost:8080/announcement-board/`
 
@@ -285,7 +285,7 @@ Temporary `P8VERIFY-*` IDs 846–857 were deleted after the check. Id 847 was al
 | MySQL 3306 loopback-only | Pass: `127.0.0.1:3306` |
 | firewalld running; ports 8080 and 3306 not opened | Pass: listed ports empty; services `cockpit dhcpv6-client ssh` |
 | SELinux enforcing | Pass |
-| `/home/haha/.config/announcement-board/env` mode 600 | Pass (`haha:haha`) |
+| `~/.config/announcement-board/env` mode 600 | Pass (user-owned) |
 | `/etc/announcement-board.env` mode 600 | Pass (`root:root`) |
 | Nginx / Certbot on the development VM | Not installed |
 | Final `announcements` row count | **0** |

@@ -1,6 +1,6 @@
 # Production deployment guide
 
-This document describes how to deploy the announcement board on a **separate** production CentOS/RHEL-compatible host. It does **not** authorize converting the current private development VM (`haha@192.168.64.26`) into a public or production server.
+This document describes how to deploy the announcement board on a **separate** production CentOS/RHEL-compatible host. It does **not** authorize converting the current private development VM into a public or production server.
 
 Do not install Nginx or Certbot on the development VM. Do not open ports 8080 or 3306. Do not disable `firewalld` or SELinux. Do not acquire a real certificate or create DNS records for the development host.
 

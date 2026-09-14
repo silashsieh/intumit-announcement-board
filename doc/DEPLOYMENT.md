@@ -18,13 +18,13 @@ Application context: `/announcement-board`
 SSH to the VM:
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_centos_vm -o IdentitiesOnly=yes haha@192.168.64.26
+ssh -i "<ssh-key-path>" -o IdentitiesOnly=yes "<ssh-user>@<centos-host>"
 ```
 
 Repository on the VM:
 
 ```bash
-cd /home/haha/projects/intumit-announcement-board
+cd "<project-directory>"
 git checkout main   # or the deployment branch
 git pull --ff-only
 ```
@@ -39,7 +39,7 @@ Database credentials are not stored in Git. Required variable names (see [`.env.
 
 | File | Used by | Mode |
 | --- | --- | --- |
-| `/home/haha/.config/announcement-board/env` | Maven builds and tests via `scripts/with-db-env` | `600`, user-owned |
+| `~/.config/announcement-board/env` | Maven builds and tests via `scripts/with-db-env` | `600`, user-owned |
 | `/etc/announcement-board.env` | Tomcat systemd drop-in | `600`, root-owned |
 
 Do not print, copy, or commit the contents of those files. `src/localdev.env` is a local override, is Git-ignored, and stays user-owned.
@@ -47,7 +47,7 @@ Do not print, copy, or commit the contents of those files. `src/localdev.env` is
 Confirm modes without reading values:
 
 ```bash
-stat -c '%a %U:%G %n' /home/haha/.config/announcement-board/env
+stat -c '%a %U:%G %n' ~/.config/announcement-board/env
 sudo stat -c '%a %U:%G %n' /etc/announcement-board.env
 ```
 
@@ -70,7 +70,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart tomcat
 ```
 
-On this VM the drop-in is already present at `/etc/systemd/system/tomcat.service.d/announcement-board.conf` with the same `[Service]` content. Reinstall only if that file is missing or no longer loads `EnvironmentFile=/etc/announcement-board.env`.
+If the drop-in is already present at `/etc/systemd/system/tomcat.service.d/announcement-board.conf` with the same `[Service]` content, reinstall it only when the file is missing or no longer loads `EnvironmentFile=/etc/announcement-board.env`.
 
 ## Clean build and test
 
@@ -103,7 +103,7 @@ test -f target/announcement-board.war
 git rev-parse HEAD
 sha256sum target/announcement-board.war
 
-sudo install -d -m 0750 -o root -g haha /var/backups/announcement-board
+sudo install -d -m 0750 -o root -g "$(id -gn)" /var/backups/announcement-board
 sudo systemctl stop tomcat
 
 if sudo test -f /var/lib/tomcat/webapps/announcement-board.war; then
@@ -151,17 +151,17 @@ python3 scripts/describe-schema
 
 ## SSH tunnel
 
-Tomcat remains on loopback. From macOS:
+Tomcat remains on loopback. From a workstation:
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_centos_vm -o IdentitiesOnly=yes \
+ssh -i "<ssh-key-path>" -o IdentitiesOnly=yes \
   -N -L 8080:127.0.0.1:8080 \
-  haha@192.168.64.26
+  "<ssh-user>@<centos-host>"
 ```
 
 ## URLs
 
-On the VM, or on macOS through the tunnel:
+On the VM, or on a workstation through the tunnel:
 
 | What | URL |
 | --- | --- |
