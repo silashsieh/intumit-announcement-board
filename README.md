@@ -2,7 +2,7 @@
 
 A homework-sized announcement board: Spring MVC, Spring Data JPA/Hibernate, MySQL, and a Bootstrap/jQuery frontend, packaged as a WAR for external Tomcat.
 
-**Phase 5 status:** the Bootstrap UI is connected to the REST API with jQuery AJAX. The board loads the first page of announcements, paginates on the server, and supports create, edit, and delete from the browser, including loading, empty, validation, success, and error states. Deployment-configuration work remains for Phase 6.
+**Phase 6 status:** the application is deployed to the CentOS system Tomcat 10.1 service from a clean checkout. `scripts/deploy-centos` builds, tests, installs `target/announcement-board.war` at context `/announcement-board`, and smoke-tests the live UI and API. The deployment runbook is [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
 
 Project design notes are in [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md).
 
@@ -207,7 +207,13 @@ python3 scripts/with-db-env ./mvnw -B clean test
 python3 scripts/with-db-env ./mvnw -B clean package
 ```
 
-The packaged artifact is `target/announcement-board.war`. Deploy it to the system Tomcat `webapps` directory. On startup Flyway applies pending migrations, then Hibernate validates the schema. The deployed WAR serves the Bootstrap UI at `/announcement-board/` and the REST API at `/announcement-board/api/announcements`.
+The packaged artifact is `target/announcement-board.war`. On the CentOS Tomcat host, deploy with:
+
+```bash
+python3 scripts/deploy-centos
+```
+
+That helper refuses a dirty Git tree, records the commit and WAR SHA-256, backs up the previous WAR outside `webapps`, replaces `/var/lib/tomcat/webapps/announcement-board.war`, and runs `scripts/smoke-test-deployment`. On startup Flyway applies pending migrations, then Hibernate validates the schema. The deployed WAR serves the Bootstrap UI at `/announcement-board/` and the REST API at `/announcement-board/api/announcements`. Full install, rollback, and diagnostic steps are in [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
 
 ## Frontend UI
 
@@ -253,7 +259,7 @@ That URL is the live board: the page loads announcements from MySQL through the 
 
 ## What is not in this phase
 
-- Phase 6 deployment-configuration redesign (the current external Tomcat workflow is unchanged)
+- Acceptance-checklist screenshots and final homework packaging
 - Authentication, roles, attachments, rich text, search, filtering, or configurable sorting
 - Sample production data
-- Docker, Docker Compose, or containers of any kind
+- Docker, Docker Compose, reverse proxies, TLS, DNS, or a public Tomcat binding
