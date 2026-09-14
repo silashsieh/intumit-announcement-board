@@ -2,7 +2,7 @@
 
 Date tested: 2026-09-14
 
-Tested Git commit: recorded in the Final deploy section after `scripts/deploy-centos` ran from a clean `codex/phase-7-acceptance` checkout.
+Tested Git commit: `7dbdc6e97731143c094f87d5099d04a7e8059b7c` (`codex/phase-7-acceptance`)
 
 Host: CentOS Stream 10 (Coughlan) aarch64, `haha@192.168.64.26`
 
@@ -41,12 +41,12 @@ Recorded after deploying a clean committed Phase 7 tree:
 
 | Item | Result |
 | --- | --- |
-| Git commit | _fill after deploy_ |
-| WAR SHA-256 | _fill after deploy_ |
-| `python3 scripts/deploy-centos` | _fill after deploy_ |
-| Independent `python3 scripts/smoke-test-deployment` | _fill after deploy_ |
-| Independent `python3 scripts/acceptance-test` | _fill after deploy_ |
-| Maven tests during deploy | _fill after deploy_ |
+| Git commit | `7dbdc6e97731143c094f87d5099d04a7e8059b7c` |
+| WAR SHA-256 | `6a8a0e730703a48e7e899d537922a9b141db07d6e0928b1737e8cbf984be97df` |
+| `python3 scripts/deploy-centos` | success (startup ready after 5.5s; embedded smoke-test success) |
+| Independent `python3 scripts/smoke-test-deployment` | success (`P6SMOKE-7fa8823b983c`, created/deleted id 669) |
+| Independent `python3 scripts/acceptance-test` | success (`P7ACCEPT-58b4c43997dc`, created ids 670–681, cleaned up, `final_count=0`) |
+| Maven tests during deploy | **Tests run: 30, Failures: 0, Errors: 0, Skipped: 0**; WAR packaging succeeded |
 
 ## Project plan checklist (section 10)
 
@@ -154,11 +154,11 @@ Recorded after the clean Phase 7 deploy. Only Tomcat is restarted; MySQL is not 
 
 | Step | Result |
 | --- | --- |
-| Create one uniquely identified Phase 7 record | _fill after restart check_ |
-| Fetch it successfully | _fill after restart check_ |
-| `sudo systemctl restart tomcat` and wait until ready | _fill after restart check_ |
-| Fetch the same record | _fill after restart check_ |
-| Delete that exact record | _fill after restart check_ |
+| Create one uniquely identified Phase 7 record | Pass: id **682**, title `P7ACCEPT-d682779a62c0-restart` |
+| Fetch it successfully | Pass: GET 200, fields match |
+| `sudo systemctl restart tomcat` and wait until ready | Pass: Tomcat returned to `active`; UI root 200 |
+| Fetch the same record | Pass: GET `/api/announcements/682` still 200 with the same title, publisher, dates, and content |
+| Delete that exact record | Pass: DELETE 204, subsequent GET 404 |
 
 ## Service, network, and security
 
@@ -183,7 +183,7 @@ Recorded after the clean Phase 7 deploy. Only Tomcat is restarted; MySQL is not 
 | Baseline | 0 |
 | After API acceptance-test | 0 |
 | After browser runs (IDs deleted individually) | 0 |
-| After Tomcat-restart persistence record | _fill after restart check_ |
+| After Tomcat-restart persistence record | 0 (id 682 deleted) |
 
 Expected final state matches baseline: **zero application rows**. Flyway history was not deleted.
 
