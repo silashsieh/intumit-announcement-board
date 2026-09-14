@@ -440,8 +440,20 @@
     hideFormError();
   }
 
+  function hideModal($modal) {
+    var el = $modal[0];
+    var instance = getModal(el);
+    if (el.classList.contains("showing")) {
+      $modal.one("shown.bs.modal", function () {
+        instance.hide();
+      });
+      return;
+    }
+    instance.hide();
+  }
+
   function closeAnnouncementModal() {
-    getModal($announcementModal[0]).hide();
+    hideModal($announcementModal);
   }
 
   function openEdit(id, $trigger) {
@@ -556,7 +568,7 @@
       url: announcementUrl(pendingDeleteId),
       method: "DELETE"
     }).done(function () {
-      getModal($deleteModal[0]).hide();
+      hideModal($deleteModal);
       showFeedback("Announcement deleted.", false);
       var pageToLoad = currentPage;
       if (currentItemCount <= 1 && currentPage > 0) {
@@ -567,7 +579,7 @@
       if (textStatus === "abort") {
         return;
       }
-      getModal($deleteModal[0]).hide();
+      hideModal($deleteModal);
       var error = parseError(jqXHR);
       showFeedback(error.message, true);
       loadList(currentPage);
