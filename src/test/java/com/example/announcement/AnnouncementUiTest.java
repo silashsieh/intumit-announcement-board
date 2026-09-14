@@ -86,6 +86,9 @@ class AnnouncementUiTest {
 				.andExpect(content().string(containsString("attempts < 10")))
 				.andExpect(content().string(containsString("__abHidePatched")))
 				.andExpect(content().string(containsString("shown.bs.modal.abHide")))
+				.andExpect(content().string(containsString("instance._isShown")))
+				.andExpect(content().string(containsString("instance._isTransitioning")))
+				.andExpect(content().string(not(containsString("classList.contains(\"showing\")"))))
 				.andExpect(content().string(not(containsString("/api/announcements"))))
 				.andExpect(content().string(not(containsString("window.confirm"))))
 				.andExpect(content().string(not(containsString(".html("))));

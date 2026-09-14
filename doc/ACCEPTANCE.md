@@ -193,9 +193,9 @@ Expected final state matches baseline: **zero application rows**. Flyway history
 
 **Symptom.** Clicking Delete, then Cancel or Confirm while Bootstrap was still finishing the show transition, left `#delete-modal` with class `show`. Bootstrap 5.3 `Modal.hide()` returns immediately when `_isTransitioning` is true, and Modal never adds a `showing` class.
 
-**Fix.** `app.js` patches `Modal.hide` so a hide requested during the show transition waits for `shown.bs.modal`, and `hideModal()` retries until the dialog actually closes.
+**Fix.** `app.js` patches `Modal.hide` so a hide requested during the show transition waits for `shown.bs.modal`. `hideModal()` always calls that patched `hide()` unless the instance is already fully closed: it does not treat `display === "none"` as hidden while `_isShown` or `_isTransitioning` is true, and it does not look for a Bootstrap `showing` class.
 
-**Regression.** `AnnouncementUiTest.appJsIsServed` asserts `__abHidePatched`, `shown.bs.modal.abHide`, and the retry loop.
+**Regression.** `AnnouncementUiTest.appJsIsServed` asserts `__abHidePatched`, `shown.bs.modal.abHide`, `_isShown` / `_isTransitioning` guards, and the retry loop.
 
 ### 2. Keyboard focus outline did not win on Bootstrap buttons
 

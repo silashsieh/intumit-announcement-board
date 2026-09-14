@@ -461,14 +461,14 @@
 
     function tryHide() {
       var display = window.getComputedStyle(el).display;
-      if (!el.classList.contains("show") && !el.classList.contains("showing") && display === "none") {
+      // Bootstrap 5.3 never adds "showing". During the first ~150ms of show(),
+      // _isShown is already true while display is still none and "show" is absent.
+      if (!instance._isShown && !instance._isTransitioning && !el.classList.contains("show") && display === "none") {
         return;
       }
-      // Bootstrap Modal.hide() is a no-op while the show transition is running.
       instance.hide();
       attempts += 1;
-      display = window.getComputedStyle(el).display;
-      if (attempts < 10 && (el.classList.contains("show") || el.classList.contains("showing") || display === "block")) {
+      if (attempts < 10 && (instance._isShown || instance._isTransitioning || el.classList.contains("show"))) {
         window.setTimeout(tryHide, 75);
       }
     }
