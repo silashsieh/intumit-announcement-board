@@ -214,4 +214,14 @@ Expected final state matches baseline: **zero application rows**. Flyway history
 
 README build, database, deployment, tunnel, API, and test commands were executed on this VM. The Phase 7 acceptance helper and this evidence file are linked from README. `doc/DEPLOYMENT.md` needed no command corrections. `doc/PROJECT_PLAN.md` was not changed; the modal and focus fixes do not alter the design.
 
-Final homework screenshots remain Phase 8.
+Final homework screenshots and the production deployment guide are recorded in the Phase 8 closeout section below.
+
+## Phase 8 closeout
+
+Date tested: 2026-09-14
+
+Tested Git branch: `codex/phase-8-closeout` (exact commit and WAR SHA-256 are filled after the clean Phase 8 deploy).
+
+Phase 8 is documentation and packaging: final README, implemented-application screenshots, [`doc/PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md), and repository audit. Application behavior was not redesigned. Temporary screenshot records used prefix `P8SCREENSHOT-437e2655a007` and IDs 803–814; those IDs were deleted after capture. The `announcements` table returned to zero rows.
+
+The development VM remains private. Nginx and Certbot were not installed on it. Ports 8080 and 3306 remain loopback-only.

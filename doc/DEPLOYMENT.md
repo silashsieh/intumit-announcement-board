@@ -1,6 +1,8 @@
 # CentOS Tomcat deployment
 
-This runbook deploys `announcement-board.war` to the system Tomcat 10.1 service on the CentOS Stream 10 development VM. It does not use Docker, an embedded production Tomcat, or a remote database.
+This runbook deploys `announcement-board.war` to the system Tomcat 10.1 service on the CentOS Stream 10 **development** VM. It does not use Docker, an embedded production Tomcat, or a remote database. It does not make that VM public.
+
+Production deployment on a separate host is documented in [`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md). Do not install Nginx or Certbot here, and do not open ports 8080 or 3306.
 
 Application context: `/announcement-board`
 
