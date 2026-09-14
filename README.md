@@ -2,7 +2,7 @@
 
 A homework-sized announcement board: Spring MVC, Spring Data JPA/Hibernate, MySQL, and a Bootstrap/jQuery frontend, packaged as a WAR for external Tomcat.
 
-**Phase 3 status:** the announcement REST API is implemented (DTOs, Bean Validation, service, controller, and error handler) and covered by MockMvc tests against the installed MySQL database. The Bootstrap/jQuery UI is not implemented yet.
+**Phase 4 status:** the announcement REST API and a static Bootstrap UI are in place. The WAR serves a single-page list with a shared create/edit modal and a delete confirmation dialog. jQuery AJAX against `/api/announcements` is deferred to Phase 5, so the table stays empty until then.
 
 Project design notes are in [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md).
 
@@ -207,7 +207,13 @@ python3 scripts/with-db-env ./mvnw -B clean test
 python3 scripts/with-db-env ./mvnw -B clean package
 ```
 
-The packaged artifact is `target/announcement-board.war`. Deploy it to the system Tomcat `webapps` directory. On startup Flyway applies pending migrations, then Hibernate validates the schema. The deployed WAR exposes the announcement REST API; the UI is still absent.
+The packaged artifact is `target/announcement-board.war`. Deploy it to the system Tomcat `webapps` directory. On startup Flyway applies pending migrations, then Hibernate validates the schema. The deployed WAR serves the Bootstrap UI at `/announcement-board/` and the REST API at `/announcement-board/api/announcements`.
+
+## Frontend UI
+
+The WAR serves a single Bootstrap 5.3.8 page at the application root (`index.html`) with custom assets at `css/app.css` and `js/app.js`. Bootstrap and jQuery 3.7.1 are loaded from pinned CDN URLs with `integrity` and `crossorigin` attributes. Asset paths are relative so the page works under the `/announcement-board` context path.
+
+The page includes the list table, empty/loading/error/pagination DOM hooks, one create/edit modal, and a delete confirmation modal. `app.js` only resets the shared form and prevents a full-page submit. It does not call `/api/announcements`.
 
 ## SSH tunnel for local browser access
 
@@ -215,7 +221,7 @@ Tomcat's HTTP port stays on the VM loopback/private interface during development
 
 ```bash
 ssh -i ~/.ssh/id_ed25519_centos_vm -o IdentitiesOnly=yes \
-  -L 8080:127.0.0.1:8080 \
+  -N -L 8080:127.0.0.1:8080 \
   haha@192.168.64.26
 ```
 
@@ -223,13 +229,14 @@ Then open:
 
 ```text
 http://127.0.0.1:8080/announcement-board/
+http://localhost:8080/announcement-board/
 ```
 
-A 404 at that URL is expected until the UI phase. API calls use `/announcement-board/api/announcements`.
+That URL is the static Bootstrap UI. List loading, pagination, create, edit, and delete still require the Phase 5 AJAX work. API calls use `/announcement-board/api/announcements`.
 
 ## What is not in this phase
 
-- Bootstrap/jQuery pages, `index.html`, or frontend CSS/JavaScript
+- jQuery AJAX, list loading, pagination requests, create/edit/delete requests, or API error handling in the browser
 - Authentication, roles, attachments, rich text, search, filtering, or configurable sorting
 - Sample production data
 - Docker, Docker Compose, or containers of any kind
