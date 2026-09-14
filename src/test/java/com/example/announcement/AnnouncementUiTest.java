@@ -44,8 +44,19 @@ class AnnouncementUiTest {
 				.andExpect(content().string(containsString("id=\"announcement-empty\"")))
 				.andExpect(content().string(containsString("id=\"announcement-feedback\"")))
 				.andExpect(content().string(containsString("id=\"announcement-pagination\"")))
+				.andExpect(content().string(containsString("id=\"announcement-form\"")))
+				.andExpect(content().string(containsString("id=\"announcement-form-error\"")))
+				.andExpect(content().string(containsString("id=\"new-announcement-button\"")))
+				.andExpect(content().string(containsString("id=\"save-announcement-button\"")))
+				.andExpect(content().string(containsString("id=\"confirm-delete-button\"")))
+				.andExpect(content().string(containsString("id=\"announcement-title\"")))
+				.andExpect(content().string(containsString("id=\"announcement-publisher\"")))
+				.andExpect(content().string(containsString("id=\"announcement-publish-date\"")))
+				.andExpect(content().string(containsString("id=\"announcement-deadline-date\"")))
+				.andExpect(content().string(containsString("id=\"announcement-content\"")))
 				.andExpect(content().string(containsString("href=\"css/app.css\"")))
 				.andExpect(content().string(containsString("src=\"js/app.js\"")))
+				.andExpect(content().string(containsString("aria-busy")))
 				.andExpect(content().string(not(containsString("window.confirm"))))
 				.andExpect(content().string(not(containsString("/api/announcements"))));
 	}
@@ -62,7 +73,16 @@ class AnnouncementUiTest {
 		mockMvc.perform(get("/js/app.js"))
 				.andExpect(status().isOk())
 				.andExpect(content().string(containsString("preventDefault")))
-				.andExpect(content().string(not(containsString("/api/announcements"))));
+				.andExpect(content().string(containsString("$.ajax")))
+				.andExpect(content().string(containsString("api/announcements")))
+				.andExpect(content().string(containsString("application/json")))
+				.andExpect(content().string(containsString("aria-busy")))
+				.andExpect(content().string(containsString(".text(")))
+				.andExpect(content().string(containsString(".val(")))
+				.andExpect(content().string(containsString(".data(")))
+				.andExpect(content().string(not(containsString("/api/announcements"))))
+				.andExpect(content().string(not(containsString("window.confirm"))))
+				.andExpect(content().string(not(containsString(".html("))));
 	}
 
 	@Test

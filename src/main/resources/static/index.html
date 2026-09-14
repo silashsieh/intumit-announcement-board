@@ -14,12 +14,12 @@
         <h1 class="h2 mb-0">Announcement Board</h1>
       </div>
     </header>
-    <main id="main-content" class="container-lg py-4">
+    <main id="main-content" class="container-lg py-4" aria-busy="false">
       <div id="announcement-feedback" class="alert d-none" role="status" aria-live="polite" aria-atomic="true"></div>
 
       <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-3">
         <p class="text-secondary mb-0">Create, review, and manage announcements.</p>
-        <button type="button" class="btn btn-primary" id="new-announcement-button" data-bs-toggle="modal" data-bs-target="#announcement-modal">
+        <button type="button" class="btn btn-primary" id="new-announcement-button">
           New announcement
         </button>
       </div>
@@ -31,12 +31,12 @@
         </div>
       </div>
 
-      <div id="announcement-empty" class="alert alert-info" role="status">
+      <div id="announcement-empty" class="alert alert-info d-none" role="status">
         No announcements yet.
       </div>
 
       <div class="table-responsive">
-        <table class="table table-striped table-hover align-middle" id="announcement-table">
+        <table class="table table-striped table-hover align-middle" id="announcement-table" aria-busy="false">
           <caption class="visually-hidden">Announcements</caption>
           <thead>
             <tr>
@@ -63,6 +63,7 @@
           </div>
           <form id="announcement-form" novalidate>
             <div class="modal-body">
+              <div id="announcement-form-error" class="alert alert-danger d-none" role="alert"></div>
               <input type="hidden" id="announcement-id" name="id" value="">
 
               <div class="mb-3">
