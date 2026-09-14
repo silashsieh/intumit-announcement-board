@@ -23,6 +23,10 @@
   white-space: nowrap;
 }
 
+#announcement-pagination .pagination {
+  gap: 0.125rem;
+}
+
 @media (max-width: 575.98px) {
   #announcement-table {
     min-width: 36rem;

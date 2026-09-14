@@ -2,7 +2,7 @@
 
 A homework-sized announcement board: Spring MVC, Spring Data JPA/Hibernate, MySQL, and a Bootstrap/jQuery frontend, packaged as a WAR for external Tomcat.
 
-**Phase 4 status:** the announcement REST API and a static Bootstrap UI are in place. The WAR serves a single-page list with a shared create/edit modal and a delete confirmation dialog. jQuery AJAX against `/api/announcements` is deferred to Phase 5, so the table stays empty until then.
+**Phase 5 status:** the Bootstrap UI is connected to the REST API with jQuery AJAX. The board loads the first page of announcements, paginates on the server, and supports create, edit, and delete from the browser, including loading, empty, validation, success, and error states. Deployment-configuration work remains for Phase 6.
 
 Project design notes are in [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md).
 
@@ -213,7 +213,24 @@ The packaged artifact is `target/announcement-board.war`. Deploy it to the syste
 
 The WAR serves a single Bootstrap 5.3.8 page at the application root (`index.html`) with custom assets at `css/app.css` and `js/app.js`. Bootstrap and jQuery 3.7.1 are loaded from pinned CDN URLs with `integrity` and `crossorigin` attributes. Asset paths are relative so the page works under the `/announcement-board` context path.
 
-The page includes the list table, empty/loading/error/pagination DOM hooks, one create/edit modal, and a delete confirmation modal. `app.js` only resets the shared form and prevents a full-page submit. It does not call `/api/announcements`.
+`app.js` talks to the API with the context-safe relative URL `api/announcements` (no leading slash). A leading slash would drop the Tomcat context and call `/api/announcements` on the host root.
+
+### Browser workflow
+
+1. On page load, jQuery requests `GET api/announcements?page=0&size=10` and renders title, publish date, deadline date, Edit, and Delete. Content is not shown in the list.
+2. **New announcement** opens the shared modal, resets the form, and `POST`s JSON when the form is valid.
+3. **Edit** loads the current record with `GET api/announcements/{id}`, fills all five fields, and `PUT`s JSON to that id.
+4. **Delete** opens the Bootstrap confirmation modal (not `window.confirm`) and sends `DELETE` only after the danger button is pressed.
+5. Pagination uses the API’s `page`, `totalItems`, and `totalPages`. Labels are one-based; requests stay zero-based. Previous is disabled on the first page and Next on the last. Pagination is hidden when there is at most one page. A sliding window of at most five numbered links is used when there are many pages.
+6. After a successful create, edit, or delete, the modal closes, a polite success message appears, and the current list page is reloaded. If the only row on a later page is deleted, the previous page is loaded instead. Records are not added to the table until the API confirms them.
+
+### Validation and errors
+
+Client-side checks use the native `required` and `maxlength` attributes, reject whitespace-only title, publisher, and content, reject a deadline before the publish date, and raise the deadline input’s `min` when the publish date changes. The first invalid field receives focus.
+
+The backend remains authoritative. Field errors from `fieldErrors` are mapped onto the matching controls. Network failures, missing records (`404`), unexpected errors (`500`), and other non-field messages appear in the existing feedback region (assertive) or the modal error alert. Raw HTML, stack traces, and response bodies are never inserted into the page. User-supplied strings are assigned with jQuery `.text()` / `.val()`; ids are kept in jQuery data.
+
+Loading sets `aria-busy` on the list. In-flight list requests are aborted or ignored if a newer request starts. Save and delete buttons are disabled while their request is active and restored when it finishes, including failures.
 
 ## SSH tunnel for local browser access
 
@@ -232,11 +249,11 @@ http://127.0.0.1:8080/announcement-board/
 http://localhost:8080/announcement-board/
 ```
 
-That URL is the static Bootstrap UI. List loading, pagination, create, edit, and delete still require the Phase 5 AJAX work. API calls use `/announcement-board/api/announcements`.
+That URL is the live board: the page loads announcements from MySQL through the REST API. Direct API calls remain at `/announcement-board/api/announcements`.
 
 ## What is not in this phase
 
-- jQuery AJAX, list loading, pagination requests, create/edit/delete requests, or API error handling in the browser
+- Phase 6 deployment-configuration redesign (the current external Tomcat workflow is unchanged)
 - Authentication, roles, attachments, rich text, search, filtering, or configurable sorting
 - Sample production data
 - Docker, Docker Compose, or containers of any kind
