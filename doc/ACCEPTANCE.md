@@ -220,8 +220,90 @@ Final homework screenshots and the production deployment guide are recorded in t
 
 Date tested: 2026-09-14
 
-Tested Git branch: `codex/phase-8-closeout` (exact commit and WAR SHA-256 are filled after the clean Phase 8 deploy).
+Host: CentOS Stream 10 (Coughlan) aarch64, `haha@192.168.64.26`
 
-Phase 8 is documentation and packaging: final README, implemented-application screenshots, [`doc/PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md), and repository audit. Application behavior was not redesigned. Temporary screenshot records used prefix `P8SCREENSHOT-437e2655a007` and IDs 803–814; those IDs were deleted after capture. The `announcements` table returned to zero rows.
+Phase 8 is documentation and packaging: final README, implemented-application screenshots, [`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md), and repository audit. Application behavior was not redesigned. No defects were found that required a code change.
 
-The development VM remains private. Nginx and Certbot were not installed on it. Ports 8080 and 3306 remain loopback-only.
+The development VM remains private. Nginx and Certbot were **not** installed on it. This closeout does not convert that VM into a public server.
+
+### Screenshots
+
+Captured through the SSH tunnel from `http://localhost:8080/announcement-board/` using temporary records:
+
+- Prefix: `P8SCREENSHOT-437e2655a007`
+- IDs **803–814** (deleted by those IDs after capture)
+
+Images (do not overwrite the assignment reference files):
+
+- `docs/images/app-list.png`
+- `docs/images/app-create.png`
+- `docs/images/app-edit.png`
+- `docs/images/app-mobile.png`
+
+### Final deploy
+
+Recorded after deploying a clean committed Phase 8 tree:
+
+| Item | Result |
+| --- | --- |
+| Git commit | `0c7bddf6947e70f5e4dad8eaa6b68b6cecb146b5` |
+| WAR SHA-256 | `575ef940e0e25f2ba6e9504be305e14591801ea9e956c14061728a0f15ddeb20` |
+| `python3 scripts/deploy-centos` | success (startup ready after 5.9s; embedded smoke-test success; previous WAR backed up under `/var/backups/announcement-board/`) |
+| Independent `python3 scripts/smoke-test-deployment` | success (`P6SMOKE-179a657a0be0`, created/deleted id 833) |
+| Independent `python3 scripts/acceptance-test` | success (`P7ACCEPT-471349631740`, created ids 834–845, cleaned up, `final_count=0`) |
+| Maven tests during deploy | **Tests run: 30, Failures: 0, Errors: 0, Skipped: 0**; WAR packaging succeeded |
+
+A squash merge will create a different final commit hash. After merge, fast-forward CentOS `main` and run `python3 scripts/deploy-centos` once more so the deployed artifact is recorded against the merged commit.
+
+### Browser verification
+
+Tunnel: `ssh -N -L 8080:127.0.0.1:8080 -i ~/.ssh/id_ed25519_centos_vm haha@192.168.64.26`
+
+URL: `http://localhost:8080/announcement-board/`
+
+| Check | Result |
+| --- | --- |
+| Empty state after deploy | Pass |
+| Create through the shared modal | Pass (`P8VERIFY-board-create`, id 846) |
+| Edit persists in the list | Pass (title became `P8VERIFY-board-edited`) |
+| Pagination with more than 10 rows | Pass (12 rows, page 1 of 2; page 2 showed the remaining two rows; Next disabled on the last page) |
+| Delete confirmation modal | Pass (deleted `P8VERIFY-page-00` / id 847) |
+| Desktop layout usable | Pass (1280×800) |
+| 375px layout usable; action columns reachable by horizontal scroll | Pass |
+| Screenshots match the deployed UI | Pass |
+
+Temporary `P8VERIFY-*` IDs 846–857 were deleted after the check. Id 847 was already absent (browser delete) and returned 404 on cleanup.
+
+### Service, network, and security
+
+| Check | Result |
+| --- | --- |
+| `tomcat` active and enabled | Pass |
+| `mysqld` active and enabled | Pass |
+| Flyway remains V1, success=1 | Pass |
+| Tomcat 8080 loopback-only | Pass: `[::ffff:127.0.0.1]:8080` |
+| MySQL 3306 loopback-only | Pass: `127.0.0.1:3306` |
+| firewalld running; ports 8080 and 3306 not opened | Pass: listed ports empty; services `cockpit dhcpv6-client ssh` |
+| SELinux enforcing | Pass |
+| `/home/haha/.config/announcement-board/env` mode 600 | Pass (`haha:haha`) |
+| `/etc/announcement-board.env` mode 600 | Pass (`root:root`) |
+| Nginx / Certbot on the development VM | Not installed |
+| Final `announcements` row count | **0** |
+
+### Repository audit
+
+- Maven packaging is WAR; `spring-boot-starter-tomcat` is `provided`
+- No Docker / Docker Compose, H2, Testcontainers, nested `src/src/main`, tracked `target/`, WAR/backup files, IDE metadata, credential files, or database dumps
+- `git diff --check` passed
+- Scripts remain executable (`100755`)
+- No secrets in Git; `.env.example` uses placeholders only
+
+### Defects found
+
+None. No application code was changed in Phase 8.
+
+### External VM files
+
+- Replaced `/var/lib/tomcat/webapps/announcement-board.war` via `scripts/deploy-centos`
+- Wrote `/var/backups/announcement-board/announcement-board.20260914T152247Z.0c7bddf6947e.war.bak`
+- Did not modify protected env files, Tomcat connector bind, MySQL bind address, firewalld, or SELinux
