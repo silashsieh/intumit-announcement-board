@@ -1,5 +1,7 @@
 # Announcement Board - Project Plan and Design
 
+**Status:** The required homework scope in this plan is implemented and accepted on the private CentOS development VM. Screenshots and GitHub closeout live in the README. Production-shaped Nginx/TLS guidance for a **separate** host is in [`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md). Optional items in section 11 remain out of scope.
+
 ## 1. Goal
 
 Build a small web-based announcement board that replaces the desktop/MFC-like screens in the assignment with:
