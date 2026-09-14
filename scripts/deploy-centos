@@ -1,0 +1,464 @@
+#!/usr/bin/env python3
+"""Build, deploy, and smoke-test announcement-board.war on the CentOS Tomcat host.
+
+Refuses a dirty Git tree. Backs up the previous WAR outside webapps, replaces the
+WAR only after Tomcat is stopped, and restores that backup if deployment fails.
+Never prints environment-file contents or other secrets.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Sequence
+from urllib.request import urlopen
+
+CONTEXT_NAME = "announcement-board"
+WAR_NAME = "announcement-board.war"
+WEBAPPS_DIR = Path("/var/lib/tomcat/webapps")
+WAR_PATH = WEBAPPS_DIR / WAR_NAME
+EXPLODED_DIR = WEBAPPS_DIR / CONTEXT_NAME
+STAGING_WAR = WEBAPPS_DIR / "announcement-board.war.deploying"
+BACKUP_DIR = Path("/var/backups/announcement-board")
+DROPIN_PATH = Path("/etc/systemd/system/tomcat.service.d/announcement-board.conf")
+ENV_FILE = Path("/etc/announcement-board.env")
+TOMCAT_SERVICE = "tomcat"
+MYSQL_SERVICE = "mysqld"
+TOMCAT_USER = "tomcat"
+TOMCAT_GROUP = "tomcat"
+BASE_URL = "http://127.0.0.1:8080/announcement-board"
+READY_TIMEOUT_SECONDS = 90
+READY_POLL_SECONDS = 1
+JOURNAL_LINES = 80
+
+JDBC_RE = re.compile(r"jdbc:\S+")
+SECRET_ASSIGN_RE = re.compile(
+    r"(?i)\b(db_password|password|passwd|secret|pwd)\s*[:=]\s*\S+"
+)
+
+
+class DeployFailure(RuntimeError):
+    pass
+
+
+def die(message: str) -> None:
+    raise DeployFailure(message)
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def run(
+    args: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    check: bool = True,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        list(args),
+        cwd=cwd,
+        check=False,
+        text=True,
+        capture_output=capture,
+    )
+    if check and completed.returncode != 0:
+        detail = ""
+        if capture:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            if detail:
+                detail = ": " + redact_text(detail.splitlines()[-1])
+        die(f"command failed ({completed.returncode}): {' '.join(args)}{detail}")
+    return completed
+
+
+def sudo(
+    args: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    check: bool = True,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    return run(["sudo", "-n", *args], cwd=cwd, check=check, capture=capture)
+
+
+def redact_text(text: str) -> str:
+    redacted = JDBC_RE.sub("jdbc:<redacted>", text)
+    return SECRET_ASSIGN_RE.sub(lambda match: f"{match.group(1)}=<redacted>", redacted)
+
+
+def require_exact_path(path: Path, expected: Path, *, what: str) -> Path:
+    if path != expected:
+        die(f"{what} path mismatch: {path} (expected {expected})")
+    if ".." in path.parts:
+        die(f"{what} path contains '..': {path}")
+    return path
+
+
+def file_mode(path: Path) -> int:
+    completed = sudo(["stat", "-c", "%a", str(path)], capture=True)
+    try:
+        return int((completed.stdout or "").strip(), 8)
+    except ValueError as exc:
+        raise DeployFailure(f"could not read mode for {path}") from exc
+
+
+def file_exists(path: Path) -> bool:
+    return sudo(["test", "-e", str(path)], check=False).returncode == 0
+
+
+def is_dir(path: Path) -> bool:
+    return sudo(["test", "-d", str(path)], check=False).returncode == 0
+
+
+def is_symlink(path: Path) -> bool:
+    return sudo(["test", "-L", str(path)], check=False).returncode == 0
+
+
+def is_file(path: Path) -> bool:
+    return sudo(["test", "-f", str(path)], check=False).returncode == 0
+
+
+def git_output(repo: Path, *args: str) -> str:
+    completed = run(["git", *args], cwd=repo, capture=True)
+    return (completed.stdout or "").strip()
+
+
+def verify_repository(repo: Path) -> None:
+    markers = [
+        repo / "pom.xml",
+        repo / "mvnw",
+        repo / "scripts" / "with-db-env",
+        repo / "scripts" / "smoke-test-deployment",
+        repo / "src" / "main" / "resources" / "application.properties",
+    ]
+    missing = [str(path) for path in markers if not path.is_file()]
+    if missing:
+        die("not the announcement-board repository; missing " + ", ".join(missing))
+    pom = (repo / "pom.xml").read_text(encoding="utf-8")
+    if "<artifactId>announcement-board</artifactId>" not in pom:
+        die("pom.xml is not artifactId announcement-board")
+    if "<packaging>war</packaging>" not in pom:
+        die("pom.xml is not packaged as a WAR")
+    if not (repo / ".git").exists():
+        die("repository is missing .git; refusing to deploy")
+
+
+def verify_clean_tree(repo: Path) -> None:
+    porcelain = git_output(repo, "status", "--porcelain")
+    if porcelain:
+        print("dirty Git paths:", file=sys.stderr)
+        print(porcelain, file=sys.stderr)
+        die("refusing to deploy a dirty Git working tree")
+
+
+def listener_addresses(port: int) -> list[str]:
+    completed = run(["ss", "-lnt"], capture=True)
+    addresses: list[str] = []
+    suffix = f":{port}"
+    for line in (completed.stdout or "").splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        local = parts[3]
+        if local.endswith(suffix):
+            addresses.append(local)
+    return addresses
+
+
+def verify_loopback_port(port: int, service: str) -> None:
+    addresses = listener_addresses(port)
+    if not addresses:
+        die(f"{service} is not listening on port {port}")
+    public = [addr for addr in addresses if "127.0.0.1" not in addr]
+    if public:
+        die(f"{service} must listen only on loopback; found {', '.join(public)}")
+
+
+def verify_host() -> None:
+    if not WEBAPPS_DIR.is_dir():
+        die(f"Tomcat webapps directory is missing: {WEBAPPS_DIR}")
+    if is_symlink(WEBAPPS_DIR):
+        die(f"refusing to use a symlinked webapps directory: {WEBAPPS_DIR}")
+    if shutil.which("systemctl") is None:
+        die("systemctl is not on PATH; this helper is for the CentOS Tomcat host")
+    load_state = run(
+        ["systemctl", "show", "-p", "LoadState", "--value", f"{TOMCAT_SERVICE}.service"],
+        capture=True,
+    )
+    if (load_state.stdout or "").strip() != "loaded":
+        die(f"systemd unit {TOMCAT_SERVICE}.service was not found")
+    active_mysql = run(["systemctl", "is-active", MYSQL_SERVICE], check=False, capture=True)
+    if (active_mysql.stdout or "").strip() != "active":
+        die(f"{MYSQL_SERVICE} is not active")
+    verify_loopback_port(3306, "MySQL")
+    active_tomcat = run(["systemctl", "is-active", TOMCAT_SERVICE], check=False, capture=True)
+    if (active_tomcat.stdout or "").strip() == "active":
+        verify_loopback_port(8080, "Tomcat")
+    if not file_exists(DROPIN_PATH):
+        die(
+            f"missing Tomcat drop-in {DROPIN_PATH}. "
+            "Install deploy/systemd/tomcat.service.d/announcement-board.conf, "
+            "then run sudo systemctl daemon-reload && sudo systemctl restart tomcat"
+        )
+    dropin = sudo(["cat", str(DROPIN_PATH)], capture=True).stdout or ""
+    if "EnvironmentFile=/etc/announcement-board.env" not in dropin:
+        die(f"{DROPIN_PATH} does not load {ENV_FILE}")
+    if not file_exists(ENV_FILE):
+        die(f"missing environment file {ENV_FILE}")
+    mode = file_mode(ENV_FILE)
+    if mode != 0o600:
+        die(f"{ENV_FILE} must remain mode 600 (found {mode:o})")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_war(repo: Path) -> Path:
+    helper = repo / "scripts" / "with-db-env"
+    mvnw = repo / "mvnw"
+    print("== build ==")
+    run([sys.executable, str(helper), str(mvnw), "-B", "clean", "package"], cwd=repo)
+    war = repo / "target" / WAR_NAME
+    if not war.is_file():
+        die(f"build did not produce {war}")
+    return war
+
+
+def backup_previous_war(commit: str) -> Path | None:
+    require_exact_path(WAR_PATH, WEBAPPS_DIR / WAR_NAME, what="deployed WAR")
+    if not file_exists(WAR_PATH):
+        print("backup: no previous WAR")
+        return None
+    if is_symlink(WAR_PATH) or not is_file(WAR_PATH):
+        die(f"refusing to backup unexpected path {WAR_PATH}")
+    sudo(["install", "-d", "-m", "0750", "-o", "root", "-g", "haha", str(BACKUP_DIR)])
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = BACKUP_DIR / f"announcement-board.{stamp}.{commit[:12]}.war.bak"
+    if backup.suffix != ".bak" or backup.parent != BACKUP_DIR:
+        die(f"refusing unexpected backup path {backup}")
+    if backup.name.endswith(".war"):
+        die(f"backup must not use a .war suffix: {backup}")
+    sudo(["cp", "-a", "--", str(WAR_PATH), str(backup)])
+    sudo(["chown", "root:haha", str(backup)])
+    sudo(["chmod", "640", str(backup)])
+    print(f"backup={backup}")
+    return backup
+
+
+def stop_tomcat() -> None:
+    print("stopping tomcat")
+    sudo(["systemctl", "stop", TOMCAT_SERVICE])
+    state = run(["systemctl", "is-active", TOMCAT_SERVICE], check=False, capture=True)
+    if (state.stdout or "").strip() not in {"inactive", "failed"}:
+        die(f"tomcat did not stop (state {(state.stdout or '').strip()})")
+
+
+def start_tomcat() -> None:
+    print("starting tomcat")
+    sudo(["systemctl", "start", TOMCAT_SERVICE])
+
+
+def remove_exploded_dir() -> None:
+    require_exact_path(EXPLODED_DIR, WEBAPPS_DIR / CONTEXT_NAME, what="exploded directory")
+    if EXPLODED_DIR.name != CONTEXT_NAME or EXPLODED_DIR.parent != WEBAPPS_DIR:
+        die(f"refusing to delete unvalidated path {EXPLODED_DIR}")
+    if not file_exists(EXPLODED_DIR):
+        return
+    if is_symlink(EXPLODED_DIR):
+        die(f"refusing to delete symlink {EXPLODED_DIR}")
+    if not is_dir(EXPLODED_DIR):
+        die(f"exploded path exists but is not a directory: {EXPLODED_DIR}")
+    print(f"removing exploded directory {EXPLODED_DIR}")
+    sudo(["rm", "-rf", "--", str(EXPLODED_DIR)])
+
+
+def remove_staging_war() -> None:
+    require_exact_path(STAGING_WAR, WEBAPPS_DIR / "announcement-board.war.deploying", what="staging WAR")
+    if file_exists(STAGING_WAR):
+        if is_dir(STAGING_WAR):
+            die(f"staging path is a directory; refusing to delete {STAGING_WAR}")
+        sudo(["rm", "-f", "--", str(STAGING_WAR)])
+
+
+def install_war(source: Path) -> None:
+    require_exact_path(WAR_PATH, WEBAPPS_DIR / WAR_NAME, what="deployed WAR")
+    remove_staging_war()
+    sudo(
+        [
+            "install",
+            "-m",
+            "644",
+            "-o",
+            TOMCAT_USER,
+            "-g",
+            TOMCAT_GROUP,
+            str(source),
+            str(STAGING_WAR),
+        ]
+    )
+    sudo(["mv", "-f", "--", str(STAGING_WAR), str(WAR_PATH)])
+    if shutil.which("restorecon"):
+        sudo(["restorecon", "-v", str(WAR_PATH)], check=False)
+    print(f"installed {WAR_PATH}")
+
+
+def restore_previous_war(backup: Path) -> None:
+    print(f"restoring previous WAR from {backup}")
+    if backup.parent != BACKUP_DIR or not backup.name.endswith(".war.bak"):
+        die(f"refusing to restore unvalidated backup {backup}")
+    if not file_exists(backup):
+        die(f"backup is missing: {backup}")
+    stop_tomcat()
+    remove_exploded_dir()
+    remove_staging_war()
+    install_war(backup)
+    start_tomcat()
+    wait_until_ready()
+    print("rollback restored the previous WAR")
+
+
+def targeted_diagnostics() -> None:
+    print("== diagnostics ==", file=sys.stderr)
+    status = run(
+        ["systemctl", "status", TOMCAT_SERVICE, "--no-pager", "--lines=20"],
+        check=False,
+        capture=True,
+    )
+    print(redact_text(status.stdout or status.stderr or ""), file=sys.stderr)
+    journal = sudo(
+        [
+            "journalctl",
+            "-u",
+            TOMCAT_SERVICE,
+            "-n",
+            str(JOURNAL_LINES),
+            "--no-pager",
+            "--output=cat",
+        ],
+        check=False,
+        capture=True,
+    )
+    interesting = re.compile(
+        r"ERROR|SEVERE|Exception|Schema-validation|Failed|Address already|"
+        r"Permission denied|Started ServletInitializer|deployWAR|ProtocolHandler",
+        re.IGNORECASE,
+    )
+    lines = [
+        redact_text(line)
+        for line in (journal.stdout or "").splitlines()
+        if interesting.search(line)
+    ]
+    if lines:
+        print("journal matches:", file=sys.stderr)
+        print("\n".join(lines[-40:]), file=sys.stderr)
+    else:
+        print("journal matches: (none)", file=sys.stderr)
+    print(f"war_present={file_exists(WAR_PATH)} exploded_present={file_exists(EXPLODED_DIR)}", file=sys.stderr)
+
+
+def http_status(url: str) -> int | None:
+    try:
+        with urlopen(url, timeout=3) as resp:
+            return resp.status
+    except Exception:
+        return None
+
+
+def wait_until_ready() -> None:
+    root = BASE_URL + "/"
+    api = BASE_URL + "/api/announcements?page=0&size=10"
+    deadline = time.monotonic() + READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        active = run(["systemctl", "is-active", TOMCAT_SERVICE], check=False, capture=True)
+        if (active.stdout or "").strip() != "active":
+            targeted_diagnostics()
+            die("tomcat is not active after start")
+        root_status = http_status(root)
+        api_status = http_status(api)
+        if root_status == 200 and api_status == 200:
+            elapsed = READY_TIMEOUT_SECONDS - (deadline - time.monotonic())
+            print(f"startup ready after {elapsed:.1f}s")
+            return
+        time.sleep(READY_POLL_SECONDS)
+    targeted_diagnostics()
+    die(f"Tomcat did not become ready within {READY_TIMEOUT_SECONDS}s")
+
+
+def run_smoke(repo: Path) -> None:
+    smoke = repo / "scripts" / "smoke-test-deployment"
+    print("== smoke test ==")
+    run([sys.executable, str(smoke), BASE_URL], cwd=repo)
+
+
+def main(argv: list[str]) -> int:
+    if argv[1:] in (["-h"], ["--help"]):
+        print("usage: deploy-centos")
+        return 0
+    if argv[1:]:
+        print("usage: deploy-centos", file=sys.stderr)
+        return 2
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(line_buffering=True)
+    repo = repo_root()
+    os.chdir(repo)
+    mutated = False
+    backup: Path | None = None
+    try:
+        print(f"== repository ==\npath={repo}")
+        verify_repository(repo)
+        verify_clean_tree(repo)
+        verify_host()
+        commit = git_output(repo, "rev-parse", "HEAD")
+        print(f"commit={commit}")
+        war = build_war(repo)
+        digest = sha256_file(war)
+        print(f"== artifact ==\nwar={war}\nsha256={digest}")
+        print("== backup ==")
+        backup = backup_previous_war(commit)
+        print("== deploy ==")
+        mutated = True
+        stop_tomcat()
+        remove_exploded_dir()
+        install_war(war)
+        start_tomcat()
+        wait_until_ready()
+        run_smoke(repo)
+        print("== result ==\nsuccess")
+        print(f"commit={commit}")
+        print(f"sha256={digest}")
+        if backup is not None:
+            print(f"previous_war_backup={backup}")
+        return 0
+    except DeployFailure as exc:
+        print(f"deploy-centos: {exc}", file=sys.stderr)
+        if mutated:
+            try:
+                if backup is not None:
+                    restore_previous_war(backup)
+                else:
+                    print("no previous WAR backup to restore", file=sys.stderr)
+                    remove_staging_war()
+                    start_tomcat()
+            except DeployFailure as rollback_exc:
+                print(f"rollback failed: {rollback_exc}", file=sys.stderr)
+                targeted_diagnostics()
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

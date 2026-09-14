@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+"""Smoke-test a deployed announcement-board WAR without extra packages.
+
+Default base URL: http://127.0.0.1:8080/announcement-board
+Creates one uniquely titled Phase 6 record and always deletes that id.
+Never deletes unrelated announcements. Prints no secrets.
+"""
+from __future__ import annotations
+
+import json
+import sys
+import uuid
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+DEFAULT_BASE_URL = "http://127.0.0.1:8080/announcement-board"
+TIMEOUT_SECONDS = 15
+ITEM_FIELDS = ("id", "title", "publisher", "publishDate", "deadlineDate", "content")
+PAGE_FIELDS = ("items", "page", "size", "totalItems", "totalPages")
+UNSAFE_BODY_MARKERS = (
+    "exception",
+    "stacktrace",
+    "java.lang",
+    "sqlsyntax",
+    "jdbc:",
+    "password",
+    "db_password",
+    "caused by",
+)
+
+
+class SmokeFailure(RuntimeError):
+    pass
+
+
+def usage() -> None:
+    print(
+        "usage: smoke-test-deployment [base-url]\n"
+        f"  default base-url: {DEFAULT_BASE_URL}",
+        file=sys.stderr,
+    )
+
+
+def normalize_base(url: str) -> str:
+    base = url.strip()
+    if not base:
+        raise SmokeFailure("base URL is empty")
+    if "://" not in base:
+        raise SmokeFailure(f"base URL must include a scheme: {base}")
+    return base.rstrip("/")
+
+
+def join_base(base: str, path: str) -> str:
+    if not path.startswith("/"):
+        path = "/" + path
+    return base + path
+
+
+def request(
+    method: str,
+    url: str,
+    *,
+    json_body: dict[str, Any] | None = None,
+    accept_statuses: tuple[int, ...] | None = None,
+) -> tuple[int, str, bytes]:
+    headers = {"Accept": "*/*"}
+    data = None
+    if json_body is not None:
+        data = json.dumps(json_body).encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    req = Request(url, data=data, headers=headers, method=method)
+    try:
+        with urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+            body = resp.read()
+            content_type = resp.headers.get("Content-Type", "")
+            return resp.status, content_type, body
+    except HTTPError as exc:
+        body = exc.read()
+        content_type = exc.headers.get("Content-Type", "") if exc.headers else ""
+        if accept_statuses and exc.code in accept_statuses:
+            return exc.code, content_type, body
+        snippet = summarize_body(body)
+        raise SmokeFailure(f"{method} {url} -> HTTP {exc.code}: {snippet}") from None
+    except URLError as exc:
+        raise SmokeFailure(f"{method} {url} failed: {exc.reason}") from None
+
+
+def summarize_body(body: bytes, limit: int = 180) -> str:
+    text = body.decode("utf-8", errors="replace").replace("\n", " ").strip()
+    if len(text) > limit:
+        return text[:limit] + "..."
+    return text or "(empty body)"
+
+
+def expect_status(method: str, url: str, actual: int, expected: int) -> None:
+    if actual != expected:
+        raise SmokeFailure(f"{method} {url} expected HTTP {expected}, got {actual}")
+
+
+def parse_json(url: str, body: bytes) -> Any:
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SmokeFailure(f"{url} did not return JSON: {exc}") from None
+
+
+def assert_safe_error(url: str, payload: Any) -> None:
+    if not isinstance(payload, dict):
+        raise SmokeFailure(f"{url} error body is not an object")
+    message = payload.get("message")
+    field_errors = payload.get("fieldErrors")
+    if not isinstance(message, str) or not message.strip():
+        raise SmokeFailure(f"{url} error body is missing a safe message")
+    if not isinstance(field_errors, dict):
+        raise SmokeFailure(f"{url} error body is missing fieldErrors object")
+    blob = json.dumps(payload).lower()
+    for marker in UNSAFE_BODY_MARKERS:
+        if marker in blob:
+            raise SmokeFailure(f"{url} error body looks unsafe ({marker})")
+    if "trace" in payload or "stackTrace" in payload or "exception" in payload:
+        raise SmokeFailure(f"{url} error body includes internals")
+
+
+def assert_item(url: str, payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise SmokeFailure(f"{url} did not return an object")
+    missing = [name for name in ITEM_FIELDS if name not in payload]
+    if missing:
+        raise SmokeFailure(f"{url} missing fields: {', '.join(missing)}")
+    if not isinstance(payload["id"], int) or payload["id"] <= 0:
+        raise SmokeFailure(f"{url} id is not a positive integer")
+    for name in ("title", "publisher", "publishDate", "deadlineDate", "content"):
+        if not isinstance(payload[name], str) or not payload[name]:
+            raise SmokeFailure(f"{url} {name} is empty")
+    return payload
+
+
+def assert_page(url: str, payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise SmokeFailure(f"{url} did not return an object")
+    missing = [name for name in PAGE_FIELDS if name not in payload]
+    if missing:
+        raise SmokeFailure(f"{url} missing page fields: {', '.join(missing)}")
+    items = payload["items"]
+    page = payload["page"]
+    size = payload["size"]
+    total_items = payload["totalItems"]
+    total_pages = payload["totalPages"]
+    if not isinstance(items, list):
+        raise SmokeFailure(f"{url} items is not an array")
+    if not isinstance(page, int) or page < 0:
+        raise SmokeFailure(f"{url} page is invalid")
+    if not isinstance(size, int) or size < 1:
+        raise SmokeFailure(f"{url} size is invalid")
+    if not isinstance(total_items, int) or total_items < 0:
+        raise SmokeFailure(f"{url} totalItems is invalid")
+    if not isinstance(total_pages, int) or total_pages < 0:
+        raise SmokeFailure(f"{url} totalPages is invalid")
+    if len(items) > size:
+        raise SmokeFailure(f"{url} items length {len(items)} exceeds size {size}")
+    if total_items == 0 and total_pages != 0:
+        raise SmokeFailure(f"{url} totalPages should be 0 when totalItems is 0")
+    if total_items > 0 and total_pages < 1:
+        raise SmokeFailure(f"{url} totalPages should be at least 1 when items exist")
+    for index, item in enumerate(items):
+        assert_item(f"{url} items[{index}]", item)
+    return payload
+
+
+def delete_smoke_record(api: str, record_id: int) -> None:
+    url = f"{api}/{record_id}"
+    status, _, _ = request("DELETE", url, accept_statuses=(204, 404))
+    if status == 204:
+        print(f"cleanup: deleted smoke id {record_id}")
+        return
+    if status == 404:
+        print(f"cleanup: smoke id {record_id} already absent")
+        return
+    raise SmokeFailure(f"cleanup DELETE {url} expected 204 or 404, got {status}")
+
+
+def run(base: str) -> None:
+    root_url = join_base(base, "/")
+    css_url = join_base(base, "/css/app.css")
+    js_url = join_base(base, "/js/app.js")
+    api = join_base(base, "/api/announcements")
+    list_url = api + "?page=0&size=10"
+    smoke_id: int | None = None
+    token = uuid.uuid4().hex[:12]
+    title = f"P6SMOKE-{token}"
+    updated_title = f"{title}-updated"
+
+    print(f"base={base}")
+    print(f"smoke_title={title}")
+
+    try:
+        status, content_type, body = request("GET", root_url)
+        expect_status("GET", root_url, status, 200)
+        html = body.decode("utf-8", errors="replace")
+        if "text/html" not in content_type.lower() and "<html" not in html.lower():
+            raise SmokeFailure(f"{root_url} did not look like HTML ({content_type})")
+        if "Announcement Board" not in html or "New announcement" not in html:
+            raise SmokeFailure(f"{root_url} HTML is missing expected board markup")
+        print("ok: application root 200")
+
+        status, _, css = request("GET", css_url)
+        expect_status("GET", css_url, status, 200)
+        if b"{" not in css:
+            raise SmokeFailure(f"{css_url} does not look like CSS")
+        print("ok: css/app.css 200")
+
+        status, _, js = request("GET", js_url)
+        expect_status("GET", js_url, status, 200)
+        if b"api/announcements" not in js:
+            raise SmokeFailure(f"{js_url} is missing the announcements API path")
+        print("ok: js/app.js 200")
+
+        status, _, raw = request("GET", list_url)
+        expect_status("GET", list_url, status, 200)
+        assert_page(list_url, parse_json(list_url, raw))
+        print("ok: list API 200 with page metadata")
+
+        create_body = {
+            "title": title,
+            "publisher": "Phase 6 smoke",
+            "publishDate": "2026-09-14",
+            "deadlineDate": "2026-09-21",
+            "content": "Phase 6 CentOS deployment smoke record.",
+        }
+        status, _, raw = request("POST", api, json_body=create_body)
+        expect_status("POST", api, status, 201)
+        created_payload = parse_json(api, raw)
+        if isinstance(created_payload, dict) and isinstance(created_payload.get("id"), int):
+            smoke_id = created_payload["id"]
+        created = assert_item(api, created_payload)
+        if created["title"] != title:
+            raise SmokeFailure("create response title does not match the smoke title")
+        print(f"ok: created smoke id {smoke_id}")
+
+        get_url = f"{api}/{smoke_id}"
+        status, _, raw = request("GET", get_url)
+        expect_status("GET", get_url, status, 200)
+        fetched = assert_item(get_url, parse_json(get_url, raw))
+        if fetched["id"] != smoke_id or fetched["title"] != title:
+            raise SmokeFailure("fetched announcement does not match the created smoke record")
+        print("ok: fetched created announcement")
+
+        update_body = dict(create_body)
+        update_body["title"] = updated_title
+        update_body["content"] = "Phase 6 CentOS deployment smoke record (updated)."
+        status, _, raw = request("PUT", get_url, json_body=update_body)
+        expect_status("PUT", get_url, status, 200)
+        updated = assert_item(get_url, parse_json(get_url, raw))
+        if updated["title"] != updated_title:
+            raise SmokeFailure("update did not change the smoke title")
+        print("ok: updated smoke announcement")
+
+        status, _, raw = request("GET", list_url)
+        expect_status("GET", list_url, status, 200)
+        page = assert_page(list_url, parse_json(list_url, raw))
+        if page["totalItems"] < 1:
+            raise SmokeFailure("list totalItems is 0 after creating a smoke record")
+        print("ok: pagination fields remain valid")
+
+        status, _, raw = request(
+            "POST",
+            api,
+            json_body={"title": ""},
+            accept_statuses=(400,),
+        )
+        expect_status("POST", api, status, 400)
+        error = parse_json(api, raw)
+        assert_safe_error(api, error)
+        if error.get("message") != "Validation failed":
+            raise SmokeFailure("invalid input did not return the expected validation message")
+        print("ok: invalid input 400 with safe error body")
+
+        missing_url = f"{api}/999999999"
+        status, _, raw = request("GET", missing_url, accept_statuses=(404,))
+        expect_status("GET", missing_url, status, 404)
+        missing = parse_json(missing_url, raw)
+        assert_safe_error(missing_url, missing)
+        if missing.get("message") != "Announcement not found":
+            raise SmokeFailure("missing record did not return the expected 404 message")
+        print("ok: missing record 404")
+
+        status, _, _ = request("DELETE", get_url, accept_statuses=(204,))
+        expect_status("DELETE", get_url, status, 204)
+        print(f"ok: deleted smoke id {smoke_id}")
+        smoke_id = None
+        print("smoke-test-deployment: success")
+    finally:
+        if smoke_id is not None:
+            try:
+                delete_smoke_record(api, smoke_id)
+            except SmokeFailure as exc:
+                print(f"cleanup failed: {exc}", file=sys.stderr)
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) > 2 or (len(argv) == 2 and argv[1] in ("-h", "--help")):
+        usage()
+        return 2 if len(argv) > 2 else 0
+    try:
+        base = normalize_base(argv[1] if len(argv) == 2 else DEFAULT_BASE_URL)
+        run(base)
+        return 0
+    except SmokeFailure as exc:
+        print(f"smoke-test-deployment: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
