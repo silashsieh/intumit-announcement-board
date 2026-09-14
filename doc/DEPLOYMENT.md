@@ -1,19 +1,36 @@
-# CentOS Tomcat deployment
+# CentOS Stream 10 setup and Tomcat deployment
 
-This runbook deploys `announcement-board.war` to the system Tomcat 10.1 service on the CentOS Stream 10 **development** VM. It does not use Docker, an embedded production Tomcat, or a remote database. It does not make that VM public.
+This runbook starts with a clean CentOS Stream 10 host, installs Java 21, system Tomcat 10.1, and MySQL 8.4 LTS directly on the host, then builds and deploys `announcement-board.war`. Docker and Docker Compose are not used.
 
-Production deployment on a separate host is documented in [`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md). Do not install Nginx or Certbot here, and do not open ports 8080 or 3306.
+The application has no authentication. Keep this installation on a trusted private network. Tomcat and MySQL must remain loopback-only; do not open ports 8080 or 3306.
 
 Application context: `/announcement-board`
 
-## Prerequisites
+## Placeholders
 
-- CentOS Stream 10 host with OpenJDK 21, Maven Wrapper, system Tomcat 10.1, and MySQL 8.4 Community Server
-- Passwordless `sudo` for the deploying user
-- A clean Git checkout of this repository
-- Protected environment files already in place (see below)
-- Tomcat HTTP bound to loopback and reached with an SSH tunnel
-- `firewalld` and SELinux left enabled; ports 8080 and 3306 must not be opened
+Replace these stubs locally. Do not commit their real values:
+
+| Stub | Meaning |
+| --- | --- |
+| `<ssh-key-path>` | Workstation path to the CentOS SSH private key |
+| `<ssh-user>` | Non-root CentOS account used to build and deploy |
+| `<centos-host>` | Private hostname or IP address of the CentOS host |
+| `<repository-url>` | HTTPS or SSH clone URL for this repository |
+| `<project-directory>` | Absolute checkout path on the CentOS host |
+
+## Clean-host prerequisites
+
+- A clean CentOS Stream 10 host with working package repositories and outbound HTTPS
+- A non-root SSH account with administrative `sudo` access
+- Enough memory and disk for Java, Tomcat, MySQL, Maven dependencies, builds, and WAR backups
+- `firewalld` enabled and SELinux enforcing
+- Non-interactive `sudo` authorized for the deployment helper; it deliberately uses `sudo -n`
+
+Configure non-interactive `sudo` through a reviewed, least-privilege sudoers policy. Do not add a blanket passwordless rule on a shared host. Confirm the policy without changing system state:
+
+```bash
+sudo -n true
+```
 
 SSH to the VM:
 
@@ -21,11 +38,97 @@ SSH to the VM:
 ssh -i "<ssh-key-path>" -o IdentitiesOnly=yes "<ssh-user>@<centos-host>"
 ```
 
-Repository on the VM:
+## Install Java, Tomcat, and host tools
+
+CentOS Stream 10 provides OpenJDK 21 and Tomcat 10.1 through its normal repositories. The Maven Wrapper in this repository downloads Maven itself; a system Maven package is not required.
+
+- [Red Hat OpenJDK 21 installation](https://docs.redhat.com/en/documentation/red_hat_build_of_openjdk/21/html-single/installing_and_using_red_hat_build_of_openjdk_21_on_rhel/installing_and_using_red_hat_build_of_openjdk_21_on_rhel)
+- [Apache Tomcat 10.1 documentation](https://tomcat.apache.org/tomcat-10.1-doc/)
 
 ```bash
+sudo dnf upgrade --refresh -y
+sudo dnf install -y git curl python3 java-21-openjdk-devel tomcat firewalld
+
+java -version
+javac -version
+rpm -q tomcat
+
+sudo systemctl enable --now firewalld
+sudo firewall-cmd --permanent --add-service=ssh
+sudo firewall-cmd --reload
+getenforce
+```
+
+`getenforce` must report `Enforcing`. Do not add firewall ports 8080 or 3306.
+
+Do not start Tomcat yet. Its database environment and loopback connector are configured below.
+
+## Install MySQL 8.4 LTS
+
+Use Oracle's MySQL 8.4 Community repository for EL10. Confirm the current EL10 repository package on the [official download page](https://dev.mysql.com/downloads/repo/yum/) before installing it. The filename below was current on 2026-09-15; replace it if Oracle publishes a newer `mysql84-community-release-el10` package.
+
+Oracle's [Yum repository guide](https://dev.mysql.com/doc/refman/8.4/en/linux-installation-yum-repo.html) documents repository selection, package installation, initial startup, and the temporary root password.
+
+```bash
+curl -fLO https://dev.mysql.com/get/mysql84-community-release-el10-3.noarch.rpm
+sudo dnf install -y ./mysql84-community-release-el10-3.noarch.rpm
+dnf repolist --enabled | grep '^mysql-8.4-lts-community'
+sudo dnf install -y mysql-community-server
+```
+
+Before the first start, edit the existing `[mysqld]` section in `/etc/my.cnf` and add these settings. Do not create a second `[mysqld]` section.
+
+```ini
+bind-address = 127.0.0.1
+mysqlx-bind-address = 127.0.0.1
+```
+
+Then initialize and secure MySQL:
+
+```bash
+sudo systemctl enable --now mysqld
+systemctl is-active mysqld
+sudo grep 'temporary password' /var/log/mysqld.log
+sudo mysql_secure_installation
+```
+
+The temporary password is a secret. Use it only at the local prompt, change it immediately, and do not paste it into Git, tickets, or chat.
+
+Create the application schema and a dedicated account from an interactive root session. Replace `<application-password>` before running the SQL; use the same value later in both protected environment files.
+
+```bash
+mysql -u root -p
+```
+
+```sql
+CREATE DATABASE announcement_board
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+CREATE USER 'announcement'@'localhost'
+  IDENTIFIED BY '<application-password>';
+
+GRANT ALL PRIVILEGES ON announcement_board.*
+  TO 'announcement'@'localhost';
+
+EXIT;
+```
+
+Confirm that MySQL is reachable only on loopback:
+
+```bash
+ss -lnt | awk '$4 ~ /:3306$/'
+mysql -h 127.0.0.1 -u announcement -p announcement_board -e 'SELECT 1'
+```
+
+## Check out the application
+
+Configure Git hosting credentials outside this repository, then clone and enter the checkout:
+
+```bash
+git clone "<repository-url>" "<project-directory>"
 cd "<project-directory>"
-git checkout main   # or the deployment branch
+git checkout main
 git pull --ff-only
 ```
 
@@ -44,6 +147,17 @@ Database credentials are not stored in Git. Required variable names (see [`.env.
 
 Do not print, copy, or commit the contents of those files. `src/localdev.env` is a local override, is Git-ignored, and stays user-owned.
 
+Create both files from the tracked placeholder template, then edit them locally. Set `DB_USERNAME=announcement` and set `DB_PASSWORD` to the application password created above.
+
+```bash
+install -d -m 0700 ~/.config/announcement-board
+install -m 0600 .env.example ~/.config/announcement-board/env
+"${EDITOR:-vi}" ~/.config/announcement-board/env
+
+sudo install -m 0600 -o root -g root .env.example /etc/announcement-board.env
+sudoedit /etc/announcement-board.env
+```
+
 Confirm modes without reading values:
 
 ```bash
@@ -51,9 +165,18 @@ stat -c '%a %U:%G %n' ~/.config/announcement-board/env
 sudo stat -c '%a %U:%G %n' /etc/announcement-board.env
 ```
 
-## Systemd drop-in
+## Configure and start Tomcat
 
-Tomcat must load `/etc/announcement-board.env`. The version-controlled template is [`deploy/systemd/tomcat.service.d/announcement-board.conf`](../deploy/systemd/tomcat.service.d/announcement-board.conf). It contains no secrets:
+Edit `/etc/tomcat/server.xml` and add `address="127.0.0.1"` to the active HTTP connector on port 8080. Preserve the connector's other packaged settings. The result should have this shape:
+
+```xml
+<Connector address="127.0.0.1" port="8080" protocol="HTTP/1.1"
+           connectionTimeout="20000"
+           redirectPort="8443"
+           maxParameterCount="1000" />
+```
+
+Tomcat must also load `/etc/announcement-board.env`. The version-controlled template is [`deploy/systemd/tomcat.service.d/announcement-board.conf`](../deploy/systemd/tomcat.service.d/announcement-board.conf). It contains no secrets:
 
 ```ini
 [Service]
@@ -67,7 +190,9 @@ sudo install -d -m 0700 /etc/systemd/system/tomcat.service.d
 sudo install -m 0600 deploy/systemd/tomcat.service.d/announcement-board.conf \
   /etc/systemd/system/tomcat.service.d/announcement-board.conf
 sudo systemctl daemon-reload
-sudo systemctl restart tomcat
+sudo systemctl enable tomcat mysqld
+sudo systemctl start tomcat
+systemctl is-active tomcat mysqld
 ```
 
 If the drop-in is already present at `/etc/systemd/system/tomcat.service.d/announcement-board.conf` with the same `[Service]` content, reinstall it only when the file is missing or no longer loads `EnvironmentFile=/etc/announcement-board.env`.

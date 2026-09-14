@@ -214,7 +214,7 @@ Expected final state matches baseline: **zero application rows**. Flyway history
 
 README build, database, deployment, tunnel, API, and test commands were executed on this VM. The Phase 7 acceptance helper and this evidence file are linked from README. `doc/DEPLOYMENT.md` needed no command corrections. `doc/PROJECT_PLAN.md` was not changed; the modal and focus fixes do not alter the design.
 
-Final homework screenshots and the production deployment guide are recorded in the Phase 8 closeout section below.
+Final homework screenshots and the documentation closeout are recorded in the Phase 8 section below.
 
 ## Phase 8 closeout
 
@@ -222,7 +222,7 @@ Date tested: 2026-09-14
 
 Host: CentOS Stream 10 (Coughlan) aarch64, `<ssh-user>@<centos-host>`
 
-Phase 8 is documentation and packaging: final README, implemented-application screenshots, [`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md), and repository audit. Application behavior was not redesigned. No defects were found that required a code change.
+Phase 8 is documentation and packaging: final README, implemented-application screenshots, deployment documentation, and repository audit. Application behavior was not redesigned. No defects were found that required a code change.
 
 The development VM remains private. Nginx and Certbot were **not** installed on it. This closeout does not convert that VM into a public server.
 
@@ -242,18 +242,16 @@ Images (do not overwrite the assignment reference files):
 
 ### Final deploy
 
-Recorded after deploying a clean committed Phase 8 tree:
+Recorded after the Phase 8 squash merge and final deployment of merged `main`:
 
 | Item | Result |
 | --- | --- |
-| Git commit | `0c7bddf6947e70f5e4dad8eaa6b68b6cecb146b5` |
-| WAR SHA-256 | `575ef940e0e25f2ba6e9504be305e14591801ea9e956c14061728a0f15ddeb20` |
-| `python3 scripts/deploy-centos` | success (startup ready after 5.9s; embedded smoke-test success; previous WAR backed up under `/var/backups/announcement-board/`) |
-| Independent `python3 scripts/smoke-test-deployment` | success (`P6SMOKE-179a657a0be0`, created/deleted id 833) |
-| Independent `python3 scripts/acceptance-test` | success (`P7ACCEPT-471349631740`, created ids 834–845, cleaned up, `final_count=0`) |
+| Git commit | `f6237477cb079e14b5df9687ebc688adb7889133` |
+| WAR SHA-256 | `a327a26b11b936a331756690425be806de6fad09248a3efb70d505e26931d7f7` |
+| `python3 scripts/deploy-centos` | success (startup ready after 6.0s; embedded smoke-test success; previous WAR backed up under `/var/backups/announcement-board/`) |
+| Independent `python3 scripts/smoke-test-deployment` | success (`P6SMOKE-d399cda59536`, created/deleted id 893) |
+| Independent `python3 scripts/acceptance-test` | success (`P7ACCEPT-f7bbed678166`, created ids 894–905, cleaned up, `final_count=0`) |
 | Maven tests during deploy | **Tests run: 30, Failures: 0, Errors: 0, Skipped: 0**; WAR packaging succeeded |
-
-A squash merge will create a different final commit hash. After merge, fast-forward CentOS `main` and run `python3 scripts/deploy-centos` once more so the deployed artifact is recorded against the merged commit.
 
 ### Browser verification
 
@@ -305,5 +303,5 @@ None. No application code was changed in Phase 8.
 ### External VM files
 
 - Replaced `/var/lib/tomcat/webapps/announcement-board.war` via `scripts/deploy-centos`
-- Wrote `/var/backups/announcement-board/announcement-board.20260914T152247Z.0c7bddf6947e.war.bak`
+- Wrote `/var/backups/announcement-board/announcement-board.20260914T154559Z.f6237477cb07.war.bak`
 - Did not modify protected env files, Tomcat connector bind, MySQL bind address, firewalld, or SELinux
