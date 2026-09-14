@@ -482,11 +482,14 @@ password=replace-with-a-secret
 Example dump (adapt paths; `--defaults-extra-file` must be the first option):
 
 ```bash
+sudo install -d -m 0750 -o root -g root /var/backups/announcement-board/db
 sudo mysqldump --defaults-extra-file=/root/.config/announcement-board/backup.cnf \
   --single-transaction --routines --triggers \
   --default-character-set=utf8mb4 \
   announcement_board \
-  | sudo gzip -c > /var/backups/announcement-board/db/announcement_board.TIMESTAMP.sql.gz
+  | sudo gzip -c \
+  | sudo tee /var/backups/announcement-board/db/announcement_board.TIMESTAMP.sql.gz \
+      >/dev/null
 ```
 
 Then:
