@@ -1,0 +1,611 @@
+#!/usr/bin/env python3
+"""Phase 7 API acceptance checks for a deployed announcement-board WAR.
+
+Default base URL: http://127.0.0.1:8080/announcement-board
+Creates uniquely titled P7ACCEPT-<token> records, records their exact IDs,
+and deletes only those IDs in a finally path. Never deletes by title query
+or touches unrelated rows. Prints no secrets.
+"""
+from __future__ import annotations
+
+import json
+import sys
+import uuid
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+DEFAULT_BASE_URL = "http://127.0.0.1:8080/announcement-board"
+TIMEOUT_SECONDS = 15
+ITEM_FIELDS = ("id", "title", "publisher", "publishDate", "deadlineDate", "content")
+PAGE_FIELDS = ("items", "page", "size", "totalItems", "totalPages")
+UNSAFE_BODY_MARKERS = (
+    "exception",
+    "stacktrace",
+    "stack trace",
+    "java.lang",
+    "sqlsyntax",
+    "sqlexception",
+    "jdbc:",
+    "password",
+    "db_password",
+    "caused by",
+    "hibernate",
+    "sqlstate",
+)
+
+
+class AcceptanceFailure(RuntimeError):
+    pass
+
+
+def usage() -> None:
+    print(
+        "usage: acceptance-test [base-url]\n"
+        f"  default base-url: {DEFAULT_BASE_URL}",
+        file=sys.stderr,
+    )
+
+
+def normalize_base(url: str) -> str:
+    base = url.strip()
+    if not base:
+        raise AcceptanceFailure("base URL is empty")
+    if "://" not in base:
+        raise AcceptanceFailure(f"base URL must include a scheme: {base}")
+    return base.rstrip("/")
+
+
+def join_base(base: str, path: str) -> str:
+    if not path.startswith("/"):
+        path = "/" + path
+    return base + path
+
+
+def request(
+    method: str,
+    url: str,
+    *,
+    json_body: dict[str, Any] | None = None,
+    raw_body: bytes | None = None,
+    content_type: str | None = None,
+    accept_statuses: tuple[int, ...] | None = None,
+) -> tuple[int, str, bytes]:
+    if json_body is not None and raw_body is not None:
+        raise AcceptanceFailure("request() cannot take both json_body and raw_body")
+    headers = {"Accept": "*/*"}
+    data = None
+    if json_body is not None:
+        data = json.dumps(json_body).encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    elif raw_body is not None:
+        data = raw_body
+        headers["Content-Type"] = content_type or "application/json"
+    req = Request(url, data=data, headers=headers, method=method)
+    try:
+        with urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+            body = resp.read()
+            return resp.status, resp.headers.get("Content-Type", ""), body
+    except HTTPError as exc:
+        body = exc.read()
+        content_type_header = exc.headers.get("Content-Type", "") if exc.headers else ""
+        if accept_statuses and exc.code in accept_statuses:
+            return exc.code, content_type_header, body
+        snippet = summarize_body(body)
+        raise AcceptanceFailure(f"{method} {url} -> HTTP {exc.code}: {snippet}") from None
+    except URLError as exc:
+        raise AcceptanceFailure(f"{method} {url} failed: {exc.reason}") from None
+
+
+def summarize_body(body: bytes, limit: int = 180) -> str:
+    text = body.decode("utf-8", errors="replace").replace("\n", " ").strip()
+    if len(text) > limit:
+        return text[:limit] + "..."
+    return text or "(empty body)"
+
+
+def expect_status(method: str, url: str, actual: int, expected: int) -> None:
+    if actual != expected:
+        raise AcceptanceFailure(f"{method} {url} expected HTTP {expected}, got {actual}")
+
+
+def parse_json(url: str, body: bytes) -> Any:
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AcceptanceFailure(f"{url} did not return JSON: {exc}") from None
+
+
+def assert_safe_error(url: str, payload: Any) -> None:
+    if not isinstance(payload, dict):
+        raise AcceptanceFailure(f"{url} error body is not an object")
+    message = payload.get("message")
+    field_errors = payload.get("fieldErrors")
+    if not isinstance(message, str) or not message.strip():
+        raise AcceptanceFailure(f"{url} error body is missing a safe message")
+    if not isinstance(field_errors, dict):
+        raise AcceptanceFailure(f"{url} error body is missing fieldErrors object")
+    blob = json.dumps(payload).lower()
+    for marker in UNSAFE_BODY_MARKERS:
+        if marker in blob:
+            raise AcceptanceFailure(f"{url} error body looks unsafe ({marker})")
+    for key in ("trace", "stackTrace", "exception", "path", "sql"):
+        if key in payload:
+            raise AcceptanceFailure(f"{url} error body includes internals ({key})")
+
+
+def assert_item(url: str, payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise AcceptanceFailure(f"{url} did not return an object")
+    missing = [name for name in ITEM_FIELDS if name not in payload]
+    if missing:
+        raise AcceptanceFailure(f"{url} missing fields: {', '.join(missing)}")
+    extra_internal = [name for name in ("createdAt", "updatedAt") if name in payload]
+    if extra_internal:
+        raise AcceptanceFailure(f"{url} leaked persistence timestamps: {', '.join(extra_internal)}")
+    if not isinstance(payload["id"], int) or payload["id"] <= 0:
+        raise AcceptanceFailure(f"{url} id is not a positive integer")
+    for name in ("title", "publisher", "publishDate", "deadlineDate", "content"):
+        if not isinstance(payload[name], str):
+            raise AcceptanceFailure(f"{url} {name} is not a string")
+    return payload
+
+
+def assert_page(url: str, payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise AcceptanceFailure(f"{url} did not return an object")
+    missing = [name for name in PAGE_FIELDS if name not in payload]
+    if missing:
+        raise AcceptanceFailure(f"{url} missing page fields: {', '.join(missing)}")
+    items = payload["items"]
+    page = payload["page"]
+    size = payload["size"]
+    total_items = payload["totalItems"]
+    total_pages = payload["totalPages"]
+    if not isinstance(items, list):
+        raise AcceptanceFailure(f"{url} items is not an array")
+    if not isinstance(page, int) or page < 0:
+        raise AcceptanceFailure(f"{url} page is invalid")
+    if not isinstance(size, int) or size < 1:
+        raise AcceptanceFailure(f"{url} size is invalid")
+    if not isinstance(total_items, int) or total_items < 0:
+        raise AcceptanceFailure(f"{url} totalItems is invalid")
+    if not isinstance(total_pages, int) or total_pages < 0:
+        raise AcceptanceFailure(f"{url} totalPages is invalid")
+    if len(items) > size:
+        raise AcceptanceFailure(f"{url} items length {len(items)} exceeds size {size}")
+    if total_items == 0 and total_pages != 0:
+        raise AcceptanceFailure(f"{url} totalPages should be 0 when totalItems is 0")
+    if total_items > 0 and total_pages < 1:
+        raise AcceptanceFailure(f"{url} totalPages should be at least 1 when items exist")
+    expected_pages = 0 if total_items == 0 else (total_items + size - 1) // size
+    if total_pages != expected_pages:
+        raise AcceptanceFailure(
+            f"{url} totalPages {total_pages} does not match size {size} and totalItems {total_items}"
+        )
+    for index, item in enumerate(items):
+        assert_item(f"{url} items[{index}]", item)
+    return payload
+
+
+def assert_fields_match(url: str, payload: dict[str, Any], expected: dict[str, Any]) -> None:
+    for name, value in expected.items():
+        if payload.get(name) != value:
+            raise AcceptanceFailure(
+                f"{url} {name} expected {value!r}, got {payload.get(name)!r}"
+            )
+
+
+def assert_sorted_by_publish_then_id(url: str, items: list[dict[str, Any]]) -> None:
+    for index in range(len(items) - 1):
+        current = items[index]
+        nxt = items[index + 1]
+        current_key = (current["publishDate"], current["id"])
+        next_key = (nxt["publishDate"], nxt["id"])
+        if current_key < next_key:
+            raise AcceptanceFailure(
+                f"{url} items are not ordered by publishDate DESC, id DESC "
+                f"at index {index}: {current_key} then {next_key}"
+            )
+
+
+def payload_for(
+    title: str,
+    publisher: str,
+    publish_date: str,
+    deadline_date: str,
+    content: str,
+) -> dict[str, str]:
+    return {
+        "title": title,
+        "publisher": publisher,
+        "publishDate": publish_date,
+        "deadlineDate": deadline_date,
+        "content": content,
+    }
+
+
+def list_page(api: str, page: int, size: int = 10) -> tuple[str, dict[str, Any]]:
+    url = f"{api}?page={page}&size={size}"
+    status, _, raw = request("GET", url)
+    expect_status("GET", url, status, 200)
+    return url, assert_page(url, parse_json(url, raw))
+
+
+def collect_all_ids(api: str) -> list[int]:
+    ids: list[int] = []
+    page = 0
+    while True:
+        url, payload = list_page(api, page, size=100)
+        ids.extend(int(item["id"]) for item in payload["items"])
+        if payload["totalItems"] == 0 or page + 1 >= payload["totalPages"]:
+            break
+        page += 1
+        if page > 100:
+            raise AcceptanceFailure(f"{url} pagination did not terminate")
+    if len(ids) != len(set(ids)):
+        raise AcceptanceFailure("list pages returned duplicate ids")
+    return ids
+
+
+def create_tracked(
+    api: str,
+    created_ids: list[int],
+    body: dict[str, str],
+) -> dict[str, Any]:
+    status, _, raw = request("POST", api, json_body=body)
+    parsed = parse_json(api, raw)
+    if isinstance(parsed, dict) and isinstance(parsed.get("id"), int):
+        created_ids.append(parsed["id"])
+    expect_status("POST", api, status, 201)
+    created = assert_item(api, parsed)
+    assert_fields_match(api, created, body)
+    return created
+
+
+def delete_tracked(api: str, record_id: int) -> None:
+    url = f"{api}/{record_id}"
+    status, _, _ = request("DELETE", url, accept_statuses=(204, 404))
+    if status == 204:
+        print(f"cleanup: deleted id {record_id}")
+        return
+    if status == 404:
+        print(f"cleanup: id {record_id} already absent")
+        return
+    raise AcceptanceFailure(f"cleanup DELETE {url} expected 204 or 404, got {status}")
+
+
+def run(base: str) -> None:
+    api = join_base(base, "/api/announcements")
+    js_url = join_base(base, "/js/app.js")
+    created_ids: list[int] = []
+    token = uuid.uuid4().hex[:12]
+    prefix = f"P7ACCEPT-{token}"
+
+    print(f"base={base}")
+    print(f"prefix={prefix}")
+
+    try:
+        list_url, initial = list_page(api, 0, size=10)
+        if initial["page"] != 0:
+            raise AcceptanceFailure(f"{list_url} default list is not zero-based page 0")
+        if initial["size"] != 10:
+            raise AcceptanceFailure(f"{list_url} default size is not 10")
+        print("ok: initial list response shape")
+
+        baseline_ids = collect_all_ids(api)
+        baseline_count = len(baseline_ids)
+        print(f"baseline_ids={baseline_ids}")
+        print(f"baseline_count={baseline_count}")
+
+        exact_body = payload_for(
+            f"{prefix}-exact",
+            "Phase 7 Exact",
+            "2026-06-15",
+            "2026-06-20",
+            "Exact persistence payload.",
+        )
+        created = create_tracked(api, created_ids, exact_body)
+        exact_id = created["id"]
+        print(f"ok: created id {exact_id}")
+
+        get_url = f"{api}/{exact_id}"
+        status, _, raw = request("GET", get_url)
+        expect_status("GET", get_url, status, 200)
+        fetched = assert_item(get_url, parse_json(get_url, raw))
+        if fetched["id"] != exact_id:
+            raise AcceptanceFailure("fetched id does not match the created record")
+        assert_fields_match(get_url, fetched, exact_body)
+        print("ok: fetched created announcement with exact persistence fields")
+
+        updated_body = payload_for(
+            f"{prefix}-updated",
+            "Phase 7 Editor",
+            "2026-06-16",
+            "2026-06-21",
+            "Updated persistence payload.",
+        )
+        status, _, raw = request("PUT", get_url, json_body=updated_body)
+        expect_status("PUT", get_url, status, 200)
+        updated = assert_item(get_url, parse_json(get_url, raw))
+        if updated["id"] != exact_id:
+            raise AcceptanceFailure("update changed the announcement id")
+        assert_fields_match(get_url, updated, updated_body)
+        status, _, raw = request("GET", get_url)
+        expect_status("GET", get_url, status, 200)
+        refetched = assert_item(get_url, parse_json(get_url, raw))
+        assert_fields_match(get_url, refetched, updated_body)
+        print("ok: updated announcement persisted exactly as written")
+
+        newest = create_tracked(
+            api,
+            created_ids,
+            payload_for(
+                f"{prefix}-newest",
+                "Phase 7 Pagination",
+                "2026-12-31",
+                "2027-01-07",
+                "Newest publish date.",
+            ),
+        )
+        oldest = create_tracked(
+            api,
+            created_ids,
+            payload_for(
+                f"{prefix}-oldest",
+                "Phase 7 Pagination",
+                "2026-01-01",
+                "2026-01-08",
+                "Oldest publish date.",
+            ),
+        )
+        same_day_ids: list[int] = []
+        for index in range(9):
+            created_same_day = create_tracked(
+                api,
+                created_ids,
+                payload_for(
+                    f"{prefix}-same-{index:02d}",
+                    "Phase 7 Pagination",
+                    "2026-06-15",
+                    "2026-06-22",
+                    f"Same-day record {index:02d}.",
+                ),
+            )
+            same_day_ids.append(created_same_day["id"])
+        if len(created_ids) < 11:
+            raise AcceptanceFailure("did not create enough temporary records to exceed page size 10")
+        print(f"ok: created {len(created_ids)} temporary records to exceed page size 10")
+        print(f"created_ids={created_ids}")
+
+        expected_total = baseline_count + len(created_ids)
+        page0_url, page0 = list_page(api, 0, size=10)
+        if page0["page"] != 0:
+            raise AcceptanceFailure(f"{page0_url} did not echo zero-based page 0")
+        if page0["size"] != 10:
+            raise AcceptanceFailure(f"{page0_url} size is not 10")
+        if page0["totalItems"] != expected_total:
+            raise AcceptanceFailure(
+                f"{page0_url} totalItems {page0['totalItems']} != expected {expected_total}"
+            )
+        if len(page0["items"]) > 10:
+            raise AcceptanceFailure(f"{page0_url} returned more than 10 items")
+        if len(page0["items"]) != min(10, expected_total):
+            raise AcceptanceFailure(f"{page0_url} first page length does not match totalItems")
+        assert_sorted_by_publish_then_id(page0_url, page0["items"])
+        print("ok: server-side page 0 metadata and max 10 items")
+
+        page1_url, page1 = list_page(api, 1, size=10)
+        if page1["page"] != 1:
+            raise AcceptanceFailure(f"{page1_url} did not echo zero-based page 1")
+        expected_page1 = min(10, max(0, expected_total - 10))
+        if len(page1["items"]) != expected_page1:
+            raise AcceptanceFailure(
+                f"{page1_url} expected {expected_page1} remaining items, got {len(page1['items'])}"
+            )
+        if expected_total > 10 and not page1["items"]:
+            raise AcceptanceFailure(f"{page1_url} next page is empty while items remain")
+        assert_sorted_by_publish_then_id(page1_url, page1["items"])
+        print("ok: remaining items are on the next zero-based page")
+
+        all_url, all_page = list_page(api, 0, size=100)
+        assert_sorted_by_publish_then_id(all_url, all_page["items"])
+        listed_ids = [item["id"] for item in all_page["items"]]
+        if newest["id"] not in listed_ids or oldest["id"] not in listed_ids:
+            raise AcceptanceFailure("pagination list is missing the newest or oldest temporary record")
+        if listed_ids.index(newest["id"]) > listed_ids.index(oldest["id"]):
+            raise AcceptanceFailure("newest publishDate did not sort before oldest publishDate")
+        same_day_positions = sorted(listed_ids.index(record_id) for record_id in same_day_ids)
+        expected_span = list(range(same_day_positions[0], same_day_positions[0] + len(same_day_ids)))
+        if same_day_positions != expected_span:
+            raise AcceptanceFailure("same-day records are not grouped in publishDate order")
+        for earlier_id, later_id in zip(same_day_ids, same_day_ids[1:]):
+            if listed_ids.index(later_id) >= listed_ids.index(earlier_id):
+                raise AcceptanceFailure("same-day records are not ordered by id DESC")
+        print("ok: ordering is publishDate DESC, then id DESC")
+
+        status, _, js_body = request("GET", js_url)
+        expect_status("GET", js_url, status, 200)
+        js_text = js_body.decode("utf-8", errors="replace")
+        if "var PAGE_SIZE = 10;" not in js_text:
+            raise AcceptanceFailure("app.js does not keep the UI page size at 10")
+        if "pageIndex + 1" not in js_text:
+            raise AcceptanceFailure("app.js does not label pagination with one-based page numbers")
+        if "page: requestedPage" not in js_text:
+            raise AcceptanceFailure("app.js does not request zero-based API pages")
+        print("ok: UI pagination labels are one-based while API pages stay zero-based")
+
+        blank_status, _, blank_raw = request(
+            "POST",
+            api,
+            json_body={
+                "title": "",
+                "publisher": "",
+                "publishDate": None,
+                "deadlineDate": None,
+                "content": "",
+            },
+            accept_statuses=(400,),
+        )
+        expect_status("POST", api, blank_status, 400)
+        blank_error = parse_json(api, blank_raw)
+        assert_safe_error(api, blank_error)
+        if blank_error.get("message") != "Validation failed":
+            raise AcceptanceFailure("blank required fields did not return Validation failed")
+        for field in ("title", "publisher", "publishDate", "deadlineDate", "content"):
+            if field not in blank_error.get("fieldErrors", {}):
+                raise AcceptanceFailure(f"blank required field {field} was not rejected")
+        print("ok: blank required fields return 400")
+
+        whitespace_status, _, whitespace_raw = request(
+            "POST",
+            api,
+            json_body=payload_for("   ", "   ", "2026-09-11", "2026-09-18", "   "),
+            accept_statuses=(400,),
+        )
+        expect_status("POST", api, whitespace_status, 400)
+        whitespace_error = parse_json(api, whitespace_raw)
+        assert_safe_error(api, whitespace_error)
+        for field in ("title", "publisher", "content"):
+            if field not in whitespace_error.get("fieldErrors", {}):
+                raise AcceptanceFailure(f"whitespace-only {field} was not rejected")
+        print("ok: whitespace-only fields return 400")
+
+        deadline_status, _, deadline_raw = request(
+            "POST",
+            api,
+            json_body=payload_for(
+                f"{prefix}-deadline",
+                "Phase 7 Validation",
+                "2026-09-18",
+                "2026-09-11",
+                "Deadline before publish date.",
+            ),
+            accept_statuses=(400,),
+        )
+        expect_status("POST", api, deadline_status, 400)
+        deadline_error = parse_json(api, deadline_raw)
+        assert_safe_error(api, deadline_error)
+        if "deadlineDate" not in deadline_error.get("fieldErrors", {}):
+            raise AcceptanceFailure("deadline before publish date was not rejected")
+        print("ok: deadline before publish date returns 400")
+
+        title_status, _, title_raw = request(
+            "POST",
+            api,
+            json_body=payload_for(
+                "T" * 201,
+                "Phase 7 Validation",
+                "2026-09-11",
+                "2026-09-18",
+                "Title too long.",
+            ),
+            accept_statuses=(400,),
+        )
+        expect_status("POST", api, title_status, 400)
+        title_error = parse_json(api, title_raw)
+        assert_safe_error(api, title_error)
+        if "title" not in title_error.get("fieldErrors", {}):
+            raise AcceptanceFailure("title over 200 characters was not rejected")
+        print("ok: title over 200 characters returns 400")
+
+        publisher_status, _, publisher_raw = request(
+            "POST",
+            api,
+            json_body=payload_for(
+                f"{prefix}-publisher",
+                "P" * 101,
+                "2026-09-11",
+                "2026-09-18",
+                "Publisher too long.",
+            ),
+            accept_statuses=(400,),
+        )
+        expect_status("POST", api, publisher_status, 400)
+        publisher_error = parse_json(api, publisher_raw)
+        assert_safe_error(api, publisher_error)
+        if "publisher" not in publisher_error.get("fieldErrors", {}):
+            raise AcceptanceFailure("publisher over 100 characters was not rejected")
+        print("ok: publisher over 100 characters returns 400")
+
+        malformed_status, _, malformed_raw = request(
+            "POST",
+            api,
+            raw_body=b'{"title":',
+            accept_statuses=(400,),
+        )
+        expect_status("POST", api, malformed_status, 400)
+        malformed_error = parse_json(api, malformed_raw)
+        assert_safe_error(api, malformed_error)
+        if malformed_error.get("message") != "Malformed JSON request":
+            raise AcceptanceFailure("malformed JSON did not return a safe 400 message")
+        print("ok: malformed JSON returns a safe 400")
+
+        missing_url = f"{api}/999999999"
+        missing_status, _, missing_raw = request("GET", missing_url, accept_statuses=(404,))
+        expect_status("GET", missing_url, missing_status, 404)
+        missing_error = parse_json(missing_url, missing_raw)
+        assert_safe_error(missing_url, missing_error)
+        if missing_error.get("message") != "Announcement not found":
+            raise AcceptanceFailure("missing record did not return a safe 404 message")
+        print("ok: missing record returns a safe 404")
+
+        delete_url = get_url
+        delete_status, _, delete_body = request("DELETE", delete_url, accept_statuses=(204,))
+        expect_status("DELETE", delete_url, delete_status, 204)
+        if delete_body:
+            raise AcceptanceFailure("DELETE 204 response was not empty")
+        print(f"ok: delete returned 204 for id {exact_id}")
+
+        after_status, _, after_raw = request("GET", delete_url, accept_statuses=(404,))
+        expect_status("GET", delete_url, after_status, 404)
+        after_error = parse_json(delete_url, after_raw)
+        assert_safe_error(delete_url, after_error)
+        print("ok: deleted record subsequently returns 404")
+
+        remaining = [record_id for record_id in created_ids if record_id != exact_id]
+        for record_id in remaining:
+            delete_tracked(api, record_id)
+        created_ids.clear()
+
+        final_ids = collect_all_ids(api)
+        if set(final_ids) != set(baseline_ids):
+            raise AcceptanceFailure(
+                f"final ids {final_ids} do not match baseline ids {baseline_ids}"
+            )
+        if set(baseline_ids) - set(final_ids):
+            raise AcceptanceFailure("cleanup removed pre-existing baseline rows")
+        print(
+            f"ok: all temporary records removed; final_count={len(final_ids)} "
+            f"baseline_count={baseline_count}"
+        )
+        print("acceptance-test: success")
+    finally:
+        leftover = list(created_ids)
+        cleanup_failed = False
+        for record_id in leftover:
+            try:
+                delete_tracked(api, record_id)
+            except AcceptanceFailure as exc:
+                cleanup_failed = True
+                print(f"cleanup failed: {exc}", file=sys.stderr)
+        created_ids.clear()
+        if leftover and cleanup_failed:
+            raise AcceptanceFailure("failed to clean up one or more Phase 7 ids")
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) > 2 or (len(argv) == 2 and argv[1] in ("-h", "--help")):
+        usage()
+        return 2 if len(argv) > 2 else 0
+    try:
+        base = normalize_base(argv[1] if len(argv) == 2 else DEFAULT_BASE_URL)
+        run(base)
+        return 0
+    except AcceptanceFailure as exc:
+        print(f"acceptance-test: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

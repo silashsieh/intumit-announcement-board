@@ -2,7 +2,7 @@
 
 A homework-sized announcement board: Spring MVC, Spring Data JPA/Hibernate, MySQL, and a Bootstrap/jQuery frontend, packaged as a WAR for external Tomcat.
 
-**Phase 6 status:** the application is deployed to the CentOS system Tomcat 10.1 service from a clean checkout. `scripts/deploy-centos` builds, tests, installs `target/announcement-board.war` at context `/announcement-board`, and smoke-tests the live UI and API. The deployment runbook is [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
+**Phase 7 status:** acceptance is complete on the CentOS Stream 10 Tomcat 10.1 deployment. The evidence report is [`doc/ACCEPTANCE.md`](doc/ACCEPTANCE.md). `scripts/deploy-centos` builds, tests, installs `target/announcement-board.war` at context `/announcement-board`, and smoke-tests the live UI and API. `scripts/acceptance-test` repeats the API acceptance checklist against that deployment. The deployment runbook is [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
 
 Project design notes are in [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md).
 
@@ -215,6 +215,16 @@ python3 scripts/deploy-centos
 
 That helper refuses a dirty Git tree, records the commit and WAR SHA-256, backs up the previous WAR outside `webapps`, replaces `/var/lib/tomcat/webapps/announcement-board.war`, and runs `scripts/smoke-test-deployment`. On startup Flyway applies pending migrations, then Hibernate validates the schema. The deployed WAR serves the Bootstrap UI at `/announcement-board/` and the REST API at `/announcement-board/api/announcements`. Full install, rollback, and diagnostic steps are in [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
 
+After a deploy, run the smoke and API acceptance helpers independently:
+
+```bash
+python3 scripts/smoke-test-deployment
+python3 scripts/acceptance-test
+python3 scripts/acceptance-test http://127.0.0.1:8080/announcement-board
+```
+
+`scripts/acceptance-test` creates uniquely titled `P7ACCEPT-<token>` records, records their exact IDs, and deletes only those IDs. It never deletes unrelated rows. It returns nonzero if any assertion fails. The Phase 7 evidence report is [`doc/ACCEPTANCE.md`](doc/ACCEPTANCE.md).
+
 ## Frontend UI
 
 The WAR serves a single Bootstrap 5.3.8 page at the application root (`index.html`) with custom assets at `css/app.css` and `js/app.js`. Bootstrap and jQuery 3.7.1 are loaded from pinned CDN URLs with `integrity` and `crossorigin` attributes. Asset paths are relative so the page works under the `/announcement-board` context path.
@@ -259,7 +269,7 @@ That URL is the live board: the page loads announcements from MySQL through the 
 
 ## What is not in this phase
 
-- Acceptance-checklist screenshots and final homework packaging
+- Final submission screenshots and GitHub handoff packaging (Phase 8)
 - Authentication, roles, attachments, rich text, search, filtering, or configurable sorting
 - Sample production data
 - Docker, Docker Compose, reverse proxies, TLS, DNS, or a public Tomcat binding

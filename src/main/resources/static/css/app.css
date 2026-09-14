@@ -3,6 +3,14 @@
   outline-offset: 0.125rem;
 }
 
+.btn:focus-visible,
+.page-link:focus-visible,
+.form-control:focus-visible,
+.btn-close:focus-visible {
+  outline: 0.1875rem solid #0d6efd;
+  outline-offset: 0.125rem;
+}
+
 .btn:focus:not(:focus-visible),
 .form-control:focus:not(:focus-visible),
 .form-select:focus:not(:focus-visible) {
