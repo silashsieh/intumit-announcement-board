@@ -73,8 +73,10 @@ Oracle's [Yum repository guide](https://dev.mysql.com/doc/refman/8.4/en/linux-in
 curl -fLO https://dev.mysql.com/get/mysql84-community-release-el10-3.noarch.rpm
 sudo dnf install -y ./mysql84-community-release-el10-3.noarch.rpm
 dnf repolist --enabled | grep '^mysql-8.4-lts-community'
-sudo dnf install -y mysql-community-server
+sudo dnf --setopt=install_weak_deps=False install mysql-community-server
 ```
+
+Disabling weak dependencies prevents DNF from also selecting MariaDB packages that conflict with the Oracle MySQL Community packages.
 
 Before the first start, edit the existing `[mysqld]` section in `/etc/my.cnf` and add these settings. Do not create a second `[mysqld]` section.
 
