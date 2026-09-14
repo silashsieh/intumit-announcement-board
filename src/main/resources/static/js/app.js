@@ -443,13 +443,20 @@
   function hideModal($modal) {
     var el = $modal[0];
     var instance = getModal(el);
+
+    function tryHide() {
+      if (!el.classList.contains("show") && !el.classList.contains("showing")) {
+        return;
+      }
+      instance.hide();
+    }
+
     if (el.classList.contains("showing")) {
-      $modal.one("shown.bs.modal", function () {
-        instance.hide();
-      });
+      $modal.one("shown.bs.modal", tryHide);
+      window.setTimeout(tryHide, 400);
       return;
     }
-    instance.hide();
+    tryHide();
   }
 
   function closeAnnouncementModal() {
