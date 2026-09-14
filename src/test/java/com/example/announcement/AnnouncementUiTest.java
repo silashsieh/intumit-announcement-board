@@ -65,7 +65,9 @@ class AnnouncementUiTest {
 	void appCssIsServed() throws Exception {
 		mockMvc.perform(get("/css/app.css"))
 				.andExpect(status().isOk())
-				.andExpect(content().contentTypeCompatibleWith("text/css"));
+				.andExpect(content().contentTypeCompatibleWith("text/css"))
+				.andExpect(content().string(containsString(":focus-visible")))
+				.andExpect(content().string(containsString(".btn:focus-visible")));
 	}
 
 	@Test
@@ -80,6 +82,10 @@ class AnnouncementUiTest {
 				.andExpect(content().string(containsString(".text(")))
 				.andExpect(content().string(containsString(".val(")))
 				.andExpect(content().string(containsString(".data(")))
+				.andExpect(content().string(containsString("window.setTimeout(tryHide")))
+				.andExpect(content().string(containsString("attempts < 10")))
+				.andExpect(content().string(containsString("__abHidePatched")))
+				.andExpect(content().string(containsString("shown.bs.modal.abHide")))
 				.andExpect(content().string(not(containsString("/api/announcements"))))
 				.andExpect(content().string(not(containsString("window.confirm"))))
 				.andExpect(content().string(not(containsString(".html("))));

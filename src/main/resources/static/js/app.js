@@ -57,7 +57,21 @@
   }
 
   function getModal(el) {
-    return bootstrap.Modal.getOrCreateInstance(el);
+    var instance = bootstrap.Modal.getOrCreateInstance(el);
+    if (!instance.__abHidePatched) {
+      var originalHide = instance.hide.bind(instance);
+      instance.hide = function () {
+        if (instance._isShown && instance._isTransitioning) {
+          $(el).off("shown.bs.modal.abHide").one("shown.bs.modal.abHide", function () {
+            originalHide();
+          });
+          return;
+        }
+        return originalHide();
+      };
+      instance.__abHidePatched = true;
+    }
+    return instance;
   }
 
   function showFeedback(message, isError) {
@@ -443,19 +457,22 @@
   function hideModal($modal) {
     var el = $modal[0];
     var instance = getModal(el);
+    var attempts = 0;
 
     function tryHide() {
-      if (!el.classList.contains("show") && !el.classList.contains("showing")) {
+      var display = window.getComputedStyle(el).display;
+      if (!el.classList.contains("show") && !el.classList.contains("showing") && display === "none") {
         return;
       }
+      // Bootstrap Modal.hide() is a no-op while the show transition is running.
       instance.hide();
+      attempts += 1;
+      display = window.getComputedStyle(el).display;
+      if (attempts < 10 && (el.classList.contains("show") || el.classList.contains("showing") || display === "block")) {
+        window.setTimeout(tryHide, 75);
+      }
     }
 
-    if (el.classList.contains("showing")) {
-      $modal.one("shown.bs.modal", tryHide);
-      window.setTimeout(tryHide, 400);
-      return;
-    }
     tryHide();
   }
 
@@ -600,6 +617,9 @@
     $form.find(".invalid-feedback").each(function () {
       $(this).data("defaultMessage", $(this).text());
     });
+
+    getModal($announcementModal[0]);
+    getModal($deleteModal[0]);
 
     $("#new-announcement-button").on("click", function () {
       editRequestToken += 1;
