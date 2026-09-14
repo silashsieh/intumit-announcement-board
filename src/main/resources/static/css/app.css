@@ -1,0 +1,30 @@
+:focus-visible {
+  outline: 0.1875rem solid #0d6efd;
+  outline-offset: 0.125rem;
+}
+
+.btn:focus:not(:focus-visible),
+.form-control:focus:not(:focus-visible),
+.form-select:focus:not(:focus-visible) {
+  box-shadow: none;
+}
+
+.skip-link:focus {
+  position: absolute;
+  z-index: 1080;
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff;
+}
+
+#announcement-table-body td:nth-child(4),
+#announcement-table-body td:nth-child(5) {
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  #announcement-table {
+    min-width: 36rem;
+  }
+}

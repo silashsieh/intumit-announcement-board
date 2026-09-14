@@ -75,8 +75,8 @@ class AnnouncementApiTest {
 	}
 
 	@Test
-	void unknownPathRemains404UntilUiPhase() throws Exception {
-		mockMvc.perform(get("/"))
+	void unknownPathRemains404() throws Exception {
+		mockMvc.perform(get("/this-path-does-not-exist"))
 				.andExpect(status().isNotFound());
 	}
 
