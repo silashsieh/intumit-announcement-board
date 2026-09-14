@@ -71,22 +71,22 @@ docs/images/
 
 Development runs on a **CentOS Stream 10 (aarch64)** VM. Docker and Docker Compose are **not** used. MySQL is installed directly on the VM.
 
-From macOS:
+From a workstation, substitute the environment-specific connection values:
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_centos_vm -o IdentitiesOnly=yes haha@192.168.64.26
+ssh -i "<ssh-key-path>" -o IdentitiesOnly=yes "<ssh-user>@<centos-host>"
 ```
 
-On the VM, the GitHub deploy key is `~/.ssh/id_ed25519_github`, selected for `github.com` through `~/.ssh/config`. The application checkout is:
+Configure the VM's GitHub credentials outside this repository. The credential type, key filename, and SSH configuration are environment-specific. The application checkout is represented by this stub:
 
 ```text
-/home/haha/projects/intumit-announcement-board
+<project-directory>
 ```
 
 All builds, tests, database work, and application execution happen on this VM.
 
 ```bash
-cd /home/haha/projects/intumit-announcement-board
+cd "<project-directory>"
 git checkout main   # or the current working branch
 git pull --ff-only
 ```
@@ -96,7 +96,7 @@ git pull --ff-only
 Database credentials are **not** stored in Git. On the VM they live in mode `600` files:
 
 - `/etc/announcement-board.env` (read by the Tomcat systemd unit)
-- `/home/haha/.config/announcement-board/env` (used for Maven builds/tests)
+- `~/.config/announcement-board/env` (used for Maven builds/tests)
 
 See [`.env.example`](.env.example) for the required variable names and non-secret placeholders:
 
@@ -150,7 +150,7 @@ The packaged artifact is `target/announcement-board.war`.
 4. Deploy with `python3 scripts/deploy-centos` when the tree is clean.
 5. Open the UI through the SSH tunnel described below.
 
-Do not run the application on macOS against a local database. The authoritative environment is the VM.
+Do not run the application on a workstation against a separate local database. The authoritative environment is the VM.
 
 ## External Tomcat deployment
 
@@ -166,7 +166,7 @@ This helper causes a short Tomcat outage. It is appropriate for the homework VM 
 
 ## UI and API URLs
 
-On the VM, or on macOS through the tunnel:
+On the VM, or on a workstation through the tunnel:
 
 | What | URL |
 | --- | --- |
@@ -178,12 +178,12 @@ On the VM, or on macOS through the tunnel:
 
 ## SSH tunnel for local browser access
 
-Tomcat's HTTP port stays on the VM loopback during development. Do not open port 8080 in the firewall. Forward it from macOS instead:
+Tomcat's HTTP port stays on the VM loopback during development. Do not open port 8080 in the firewall. Forward it from your workstation instead:
 
 ```bash
-ssh -i ~/.ssh/id_ed25519_centos_vm -o IdentitiesOnly=yes \
+ssh -i "<ssh-key-path>" -o IdentitiesOnly=yes \
   -N -L 8080:127.0.0.1:8080 \
-  haha@192.168.64.26
+  "<ssh-user>@<centos-host>"
 ```
 
 Then open:

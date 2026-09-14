@@ -95,7 +95,7 @@ Spring Boot 4 and Tomcat 11 are not used: CentOS Stream 10 provides Tomcat 10.1,
 ### 3.3 Deployment Shape
 
 - Package as `announcement-board.war`.
-- Build, test, and run the application on the CentOS Stream 10 development VM (`haha@192.168.64.26`).
+- Build, test, and run the application on a CentOS Stream 10 development VM (`<ssh-user>@<centos-host>`).
 - Deploy the WAR to the system Tomcat 10.1 service on that VM.
 - Serve both `/index.html` and `/api/announcements` from the same WAR.
 - Supply database credentials through a mode `600` server-side environment file (`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`) rather than committing passwords.
