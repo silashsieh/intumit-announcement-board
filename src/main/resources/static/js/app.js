@@ -474,7 +474,6 @@
       }
       resetAnnouncementForm();
       populateForm(record);
-      $saveButton.prop("disabled", true);
       getModal($announcementModal[0]).show();
     }).fail(function (jqXHR, textStatus) {
       if (textStatus === "abort" || token !== editRequestToken) {
@@ -602,16 +601,10 @@
       }
       lastListTrigger = this;
       resetAnnouncementForm();
-      $saveButton.prop("disabled", true);
       getModal($announcementModal[0]).show();
     });
 
-    $announcementModal.on("show.bs.modal", function () {
-      $saveButton.prop("disabled", true);
-    });
-
     $announcementModal.on("shown.bs.modal", function () {
-      $saveButton.prop("disabled", false);
       $title.trigger("focus");
     });
 
