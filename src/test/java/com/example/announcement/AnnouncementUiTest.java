@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.forwardedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,10 @@ class AnnouncementUiTest {
 	@Test
 	void rootServesAnnouncementBoardHtml() throws Exception {
 		mockMvc.perform(get("/").accept(MediaType.TEXT_HTML))
+				.andExpect(status().isOk())
+				.andExpect(forwardedUrl("index.html"));
+
+		mockMvc.perform(get("/index.html").accept(MediaType.TEXT_HTML))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
 				.andExpect(content().string(containsString("<h1")))
