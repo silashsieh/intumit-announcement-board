@@ -196,9 +196,8 @@ sudo install -d -m 0700 /etc/systemd/system/tomcat.service.d
 sudo install -m 0600 deploy/systemd/tomcat.service.d/announcement-board.conf \
   /etc/systemd/system/tomcat.service.d/announcement-board.conf
 sudo systemctl daemon-reload
-sudo systemctl enable tomcat mysqld
-sudo systemctl start tomcat
-systemctl is-active tomcat mysqld
+sudo systemctl enable --now tomcat
+systemctl is-active tomcat
 ```
 
 If the drop-in is already present at `/etc/systemd/system/tomcat.service.d/announcement-board.conf` with the same `[Service]` content, reinstall it only when the file is missing or no longer loads `EnvironmentFile=/etc/announcement-board.env`.
