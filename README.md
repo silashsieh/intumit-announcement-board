@@ -38,13 +38,15 @@ Spring Boot 4 and Tomcat 11 were not used because CentOS Stream 10 ships Tomcat 
 Database credentials are **not** stored in Git. On the VM they live in mode `600` files:
 
 - `/etc/announcement-board.env` (read by the Tomcat systemd unit)
-- `~/.config/announcement-board/env` (used for Maven builds/tests)
+- `~/.config/announcement-board/env` (used for Maven builds/tests; point it to an isolated test database)
 
 See [`.env.example`](.env.example) for the required variable names and non-secret placeholders:
 
 - `DB_URL`
 - `DB_USERNAME`
 - `DB_PASSWORD`
+
+**Never run the Maven test suite against the production database.** The tests use the installed MySQL server and assume that the `announcements` table starts empty. Existing production rows affect count, ordering, and pagination assertions. Use `announcement_board_test` for `~/.config/announcement-board/env`; reserve `announcement_board` for `/etc/announcement-board.env` and the deployed application.
 
 Load the variables before Maven with the helper (it does not print secrets):
 
@@ -71,7 +73,7 @@ After tests or a Tomcat deploy, inspect non-secret schema metadata without print
 python3 scripts/describe-schema
 ```
 
-That helper reports table names, Flyway version and success state, `SHOW CREATE TABLE announcements`, character set/collation, and the `announcements` row count. Repository and API tests roll back inserted rows, so the table should remain empty except for Flyway metadata.
+That helper reports table names, Flyway version and success state, `SHOW CREATE TABLE announcements`, character set/collation, and the `announcements` row count. Repository and API tests roll back inserted rows, so the isolated test database should remain empty except for Flyway metadata.
 
 ## Build and test
 

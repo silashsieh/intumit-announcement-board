@@ -111,10 +111,17 @@ CREATE DATABASE announcement_board
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
+CREATE DATABASE announcement_board_test
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
 CREATE USER 'announcement'@'localhost'
   IDENTIFIED BY '<application-password>';
 
 GRANT ALL PRIVILEGES ON announcement_board.*
+  TO 'announcement'@'localhost';
+
+GRANT ALL PRIVILEGES ON announcement_board_test.*
   TO 'announcement'@'localhost';
 
 EXIT;
@@ -125,6 +132,7 @@ Confirm that MySQL is reachable only on loopback:
 ```bash
 ss -lnt | awk '$4 ~ /:3306$/'
 mysql -h 127.0.0.1 -u announcement -p announcement_board -e 'SELECT 1'
+mysql -h 127.0.0.1 -u announcement -p announcement_board_test -e 'SELECT 1'
 ```
 
 ## Check out the application
@@ -148,12 +156,14 @@ Database credentials are not stored in Git. Required variable names (see [`.env.
 
 | File | Used by | Mode |
 | --- | --- | --- |
-| `~/.config/announcement-board/env` | Maven builds and tests via `scripts/with-db-env` | `600`, user-owned |
+| `~/.config/announcement-board/env` | Maven builds and tests via `scripts/with-db-env`; isolated test database only | `600`, user-owned |
 | `/etc/announcement-board.env` | Tomcat systemd drop-in | `600`, root-owned |
 
 Do not print, copy, or commit the contents of those files. `src/localdev.env` is a local override, is Git-ignored, and stays user-owned.
 
-Create both files from the tracked placeholder template, then edit them locally. Set `DB_USERNAME=announcement` and set `DB_PASSWORD` to the application password created above.
+**Never run the Maven test suite against the production database.** The tests connect to the installed MySQL server and assume that the `announcements` table starts empty. Production rows affect count, ordering, and pagination assertions and will cause failures. Configure `/etc/announcement-board.env` with the `announcement_board` database, and configure `~/.config/announcement-board/env` with the separate `announcement_board_test` database.
+
+Create both files from the tracked placeholder template, then edit them locally. Set `DB_USERNAME=announcement` and set `DB_PASSWORD` to the application password created above. In the user-owned test file, change the database name in `DB_URL` to `announcement_board_test`.
 
 ```bash
 install -d -m 0700 ~/.config/announcement-board

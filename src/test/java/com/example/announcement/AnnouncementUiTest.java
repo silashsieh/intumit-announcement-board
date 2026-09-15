@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.forwardedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -34,6 +36,7 @@ class AnnouncementUiTest {
 		mockMvc.perform(get("/index.html").accept(MediaType.TEXT_HTML))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+				.andExpect(content().encoding(StandardCharsets.UTF_8))
 				.andExpect(content().string(containsString("<h1")))
 				.andExpect(content().string(containsString("Announcement Board")))
 				.andExpect(content().string(containsString("id=\"announcement-table\"")))
