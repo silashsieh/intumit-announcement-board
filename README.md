@@ -89,7 +89,7 @@ The packaged artifact is `target/announcement-board.war`.
 1. SSH to the CentOS VM and fast-forward the checkout.
 2. Change application code on the working branch.
 3. Run `python3 scripts/with-db-env ./mvnw -B test`.
-4. Deploy with `python3 scripts/deploy-centos` when the tree is clean.
+4. Package the WAR, then deploy it with `python3 scripts/deploy-centos`.
 5. Open the UI through the SSH tunnel described below.
 
 Do not run the application on a workstation against a separate local database. The authoritative environment is the VM.
@@ -99,10 +99,11 @@ Do not run the application on a workstation against a separate local database. T
 On the CentOS Tomcat host:
 
 ```bash
+python3 scripts/with-db-env ./mvnw -B clean package
 python3 scripts/deploy-centos
 ```
 
-That helper refuses a dirty Git tree, records the commit and WAR SHA-256, backs up the previous WAR outside `webapps`, replaces `/var/lib/tomcat/webapps/announcement-board.war`, and runs `scripts/smoke-test-deployment`. On startup Flyway applies pending migrations, then Hibernate validates the schema. Full install, rollback, and diagnostic steps are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+The deployment helper uses the existing `target/announcement-board.war`. It backs up the installed WAR outside `webapps`, stops Tomcat, replaces the WAR and exploded application directory, starts Tomcat, and waits for the application URL to return HTTP 200. It does not build, run the smoke test, validate service configuration or network listeners, or roll back automatically. On startup Flyway applies pending migrations, then Hibernate validates the schema. Full install and manual rollback steps are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 This helper causes a short Tomcat outage. It is appropriate for the homework VM and other private single-node hosts. It is not a zero-downtime procedure.
 

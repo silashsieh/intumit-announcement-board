@@ -215,9 +215,12 @@ The packaged artifact is `target/announcement-board.war`.
 
 ## Deployment helper
 
-`scripts/deploy-centos` is the supported path. It fails on a dirty Git tree, builds with tests, records the Git commit and WAR SHA-256, backs up the previous WAR under `/var/backups/announcement-board/` (not under `webapps`, and not with a `.war` suffix), stops Tomcat, replaces `/var/lib/tomcat/webapps/announcement-board.war`, removes only the exact exploded directory `/var/lib/tomcat/webapps/announcement-board`, starts Tomcat, waits for startup, and runs the smoke test. If a deployment fails after the WAR was replaced and a backup exists, the helper restores that backup.
+`scripts/deploy-centos` deploys the existing `target/announcement-board.war`. It backs up the installed WAR under `/var/backups/announcement-board/` (not under `webapps`, and not with a `.war` suffix), stops Tomcat, replaces `/var/lib/tomcat/webapps/announcement-board.war` and the exploded application directory, starts Tomcat, and waits for the application URL to return HTTP 200.
+
+The helper does not build, run tests, inspect Git state, validate MySQL or Tomcat configuration, inspect network listeners, run the smoke test, or roll back automatically. Build and test the WAR first:
 
 ```bash
+python3 scripts/with-db-env ./mvnw -B clean package
 python3 scripts/deploy-centos
 ```
 
@@ -325,7 +328,7 @@ Do not open 8080 or 3306, disable `firewalld`, disable SELinux, or bind MySQL re
 Backups are written to `/var/backups/announcement-board/` as `*.war.bak`. They must not be copied into `webapps` under a `.war` name except as the real `announcement-board.war`.
 
 ```bash
-BACKUP=/var/backups/announcement-board/announcement-board.TIMESTAMP.COMMIT.war.bak
+BACKUP=/var/backups/announcement-board/announcement-board.TIMESTAMP.war.bak
 
 sudo systemctl stop tomcat
 if sudo test -d /var/lib/tomcat/webapps/announcement-board \
@@ -341,4 +344,4 @@ sudo systemctl start tomcat
 python3 scripts/smoke-test-deployment
 ```
 
-`scripts/deploy-centos` performs this restore automatically when a deployment fails after a backup was taken.
+The deployment helper does not restore a backup automatically. Use this procedure when a rollback is required.
