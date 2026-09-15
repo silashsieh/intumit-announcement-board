@@ -23,7 +23,7 @@ Replace these stubs locally. Do not commit their real values:
 - A clean CentOS Stream 10 host with working package repositories and outbound HTTPS
 - A non-root SSH account with administrative `sudo` access
 - Enough memory and disk for Java, Tomcat, MySQL, Maven dependencies, builds, and WAR backups
-- `firewalld` enabled and SELinux enforcing
+- SELinux enforcing
 - Non-interactive `sudo` authorized for the deployment helper; it deliberately uses `sudo -n`
 
 Configure non-interactive `sudo` through a reviewed, least-privilege sudoers policy. Do not add a blanket passwordless rule on a shared host. Confirm the policy without changing system state:
@@ -47,15 +47,12 @@ CentOS Stream 10 provides OpenJDK 21 and Tomcat 10.1 through its normal reposito
 
 ```bash
 sudo dnf upgrade --refresh -y
-sudo dnf install -y git curl python3 java-21-openjdk-devel tomcat firewalld
+sudo dnf install -y git curl python3 java-21-openjdk-devel tomcat
 
 java -version
 javac -version
 rpm -q tomcat
 
-sudo systemctl enable --now firewalld
-sudo firewall-cmd --permanent --add-service=ssh
-sudo firewall-cmd --reload
 getenforce
 ```
 
