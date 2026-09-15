@@ -33,39 +33,6 @@ The application has **no authentication**. Keep it on a trusted private network 
 
 Spring Boot 4 and Tomcat 11 were not used because CentOS Stream 10 ships Tomcat 10.1. Docker and Docker Compose are not used.
 
-## Project structure
-
-```text
-pom.xml
-.env.example
-deploy/systemd/tomcat.service.d/announcement-board.conf
-scripts/deploy-centos
-scripts/smoke-test-deployment
-scripts/acceptance-test
-scripts/describe-schema
-scripts/with-db-env
-src/main/java/com/example/announcement/
-  AnnouncementBoardApplication.java
-  ServletInitializer.java
-  controller/AnnouncementController.java
-  service/AnnouncementService.java
-  repository/AnnouncementRepository.java
-  domain/Announcement.java
-  dto/
-  exception/
-src/main/resources/
-  application.properties
-  db/migration/V1__create_announcements.sql
-  static/index.html
-  static/js/app.js
-  static/css/app.css
-src/test/java/com/example/announcement/
-doc/PROJECT_PLAN.md
-doc/DEPLOYMENT.md
-doc/ACCEPTANCE.md
-docs/images/
-```
-
 ## Database configuration
 
 Database credentials are **not** stored in Git. On the VM they live in mode `600` files:
