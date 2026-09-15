@@ -69,9 +69,16 @@ Oracle's [Yum repository guide](https://dev.mysql.com/doc/refman/8.4/en/linux-in
 ```bash
 curl -fLO https://dev.mysql.com/get/mysql84-community-release-el10-3.noarch.rpm
 sudo dnf install -y ./mysql84-community-release-el10-3.noarch.rpm
+
+sudo dnf config-manager --disable mysql-9.7-lts-community
+sudo dnf config-manager --disable mysql-tools-9.7-lts-community
+sudo dnf config-manager --enable mysql-8.4-lts-community
+
 dnf repolist --enabled | grep '^mysql-8.4-lts-community'
 sudo dnf --setopt=install_weak_deps=False install mysql-community-server
 ```
+
+The current MySQL Community repository defaults to MySQL 9.7 LTS. The explicit repository switch above pins this project to MySQL 8.4 LTS before the server package is selected.
 
 Disabling weak dependencies prevents DNF from also selecting MariaDB packages that conflict with the Oracle MySQL Community packages.
 
