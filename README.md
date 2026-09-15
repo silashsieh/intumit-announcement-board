@@ -2,9 +2,9 @@
 
 A homework-sized announcement board: Spring MVC, Spring Data JPA/Hibernate, MySQL, and a Bootstrap/jQuery frontend, packaged as a WAR for external Tomcat.
 
-The required assignment scope is complete. When deployed as documented, the UI is available at `/announcement-board/` and the REST API at `/announcement-board/api/announcements`. Acceptance evidence is in [`doc/ACCEPTANCE.md`](doc/ACCEPTANCE.md). CentOS setup and deployment are documented in [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
+The required assignment scope is complete. When deployed as documented, the UI is available at `/announcement-board/` and the REST API at `/announcement-board/api/announcements`. Acceptance evidence is in [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md). CentOS setup and deployment are documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-Design notes: [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md). CentOS setup and Tomcat runbook: [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
+Design notes: [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md). CentOS setup and Tomcat runbook: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Features
 
@@ -102,7 +102,7 @@ On the CentOS Tomcat host:
 python3 scripts/deploy-centos
 ```
 
-That helper refuses a dirty Git tree, records the commit and WAR SHA-256, backs up the previous WAR outside `webapps`, replaces `/var/lib/tomcat/webapps/announcement-board.war`, and runs `scripts/smoke-test-deployment`. On startup Flyway applies pending migrations, then Hibernate validates the schema. Full install, rollback, and diagnostic steps are in [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
+That helper refuses a dirty Git tree, records the commit and WAR SHA-256, backs up the previous WAR outside `webapps`, replaces `/var/lib/tomcat/webapps/announcement-board.war`, and runs `scripts/smoke-test-deployment`. On startup Flyway applies pending migrations, then Hibernate validates the schema. Full install, rollback, and diagnostic steps are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 This helper causes a short Tomcat outage. It is appropriate for the homework VM and other private single-node hosts. It is not a zero-downtime procedure.
 
@@ -278,13 +278,13 @@ python3 scripts/acceptance-test http://127.0.0.1:8080/announcement-board
 python3 scripts/describe-schema
 ```
 
-`scripts/smoke-test-deployment` creates one uniquely titled `P6SMOKE-...` row and deletes that id. `scripts/acceptance-test` creates uniquely titled `P7ACCEPT-<token>` records, records their exact IDs, and deletes only those IDs. Neither helper deletes unrelated rows. Both return nonzero if any assertion fails. The evidence report is [`doc/ACCEPTANCE.md`](doc/ACCEPTANCE.md).
+`scripts/smoke-test-deployment` creates one uniquely titled `P6SMOKE-...` row and deletes that id. `scripts/acceptance-test` creates uniquely titled `P7ACCEPT-<token>` records, records their exact IDs, and deletes only those IDs. Neither helper deletes unrelated rows. Both return nonzero if any assertion fails. The evidence report is [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md).
 
 ## Documentation
 
-- [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md) — design and required scope
-- [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md) — clean CentOS setup and Tomcat deployment runbook
-- [`doc/ACCEPTANCE.md`](doc/ACCEPTANCE.md) — acceptance evidence
+- [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) — design and required scope
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — clean CentOS setup and Tomcat deployment runbook
+- [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) — acceptance evidence
 
 ## Screenshots
 

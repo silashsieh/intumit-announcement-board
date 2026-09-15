@@ -1,4 +1,4 @@
-# CentOS Stream 10 setup and Tomcat deployment
+# CentOS Stream 10 Setup and Tomcat Deployment
 
 This runbook starts with a clean CentOS Stream 10 host, installs Java 21, system Tomcat 10.1, and MySQL 8.4 LTS directly on the host, then builds and deploys `announcement-board.war`. Docker and Docker Compose are not used.
 

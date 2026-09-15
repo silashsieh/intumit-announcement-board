@@ -37,15 +37,15 @@ The following images were extracted from the supplied assignment. They show the 
 
 **Announcement list**
 
-![Original announcement list](../docs/images/reference-list.png)
+![Original announcement list](images/reference-list.png)
 
 **Create announcement form**
 
-![Original create announcement form](../docs/images/reference-create.png)
+![Original create announcement form](images/reference-create.png)
 
 **Edit announcement form**
 
-![Original edit announcement form](../docs/images/reference-edit.png)
+![Original edit announcement form](images/reference-edit.png)
 
 ## 3. Recommended Technical Design
 

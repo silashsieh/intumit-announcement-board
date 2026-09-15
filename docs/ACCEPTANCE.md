@@ -212,7 +212,7 @@ Expected final state matches baseline: **zero application rows**. Flyway history
 
 ## Documentation review
 
-README build, database, deployment, tunnel, API, and test commands were executed on this VM. The Phase 7 acceptance helper and this evidence file are linked from README. `doc/DEPLOYMENT.md` needed no command corrections. `doc/PROJECT_PLAN.md` was not changed; the modal and focus fixes do not alter the design.
+README build, database, deployment, tunnel, API, and test commands were executed on this VM. The Phase 7 acceptance helper and this evidence file are linked from README. `docs/DEPLOYMENT.md` needed no command corrections. `docs/PROJECT_PLAN.md` was not changed; the modal and focus fixes do not alter the design.
 
 Final homework screenshots and the documentation closeout are recorded in the Phase 8 section below.
 
