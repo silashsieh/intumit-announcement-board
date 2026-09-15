@@ -1,6 +1,6 @@
 # Announcement Board - Project Plan and Design
 
-**Status:** The required homework scope in this plan is implemented and accepted on the private CentOS development VM. Screenshots and GitHub closeout live in the README. Production-shaped Nginx/TLS guidance for a **separate** host is in [`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md). Optional items in section 11 remain out of scope.
+**Status:** The required homework scope in this plan is implemented and accepted on a private CentOS VM. Screenshots and GitHub closeout live in the README. Clean-host setup and deployment are documented in [`DEPLOYMENT.md`](DEPLOYMENT.md). Optional items in section 11 remain out of scope.
 
 ## 1. Goal
 
@@ -37,15 +37,15 @@ The following images were extracted from the supplied assignment. They show the 
 
 **Announcement list**
 
-![Original announcement list](../docs/images/reference-list.png)
+![Original announcement list](images/reference-list.png)
 
 **Create announcement form**
 
-![Original create announcement form](../docs/images/reference-create.png)
+![Original create announcement form](images/reference-create.png)
 
 **Edit announcement form**
 
-![Original edit announcement form](../docs/images/reference-edit.png)
+![Original edit announcement form](images/reference-edit.png)
 
 ## 3. Recommended Technical Design
 

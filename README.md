@@ -2,9 +2,9 @@
 
 A homework-sized announcement board: Spring MVC, Spring Data JPA/Hibernate, MySQL, and a Bootstrap/jQuery frontend, packaged as a WAR for external Tomcat.
 
-The required assignment scope is complete. The private CentOS Stream 10 development VM serves the UI at `/announcement-board/` and the REST API at `/announcement-board/api/announcements`. Acceptance evidence is in [`doc/ACCEPTANCE.md`](doc/ACCEPTANCE.md). Production deployment on a **separate** host is documented in [`doc/PRODUCTION_DEPLOYMENT.md`](doc/PRODUCTION_DEPLOYMENT.md). The current VM stays private: Tomcat and MySQL remain loopback-only.
+The required assignment scope is complete. When deployed as documented, the UI is available at `/announcement-board/` and the REST API at `/announcement-board/api/announcements`. Acceptance evidence is in [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md). CentOS setup and deployment are documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-Design notes: [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md). Development Tomcat runbook: [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
+Design notes: [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md). CentOS setup and Tomcat runbook: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Features
 
@@ -16,7 +16,7 @@ Design notes: [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md). Development Tomcat r
 - Flyway-managed MySQL schema; Hibernate validates and does not migrate
 - Packaged WAR deployed to system Tomcat 10.1
 
-The application has **no authentication**. Treat it as a private-network homework deployment. See [`doc/PRODUCTION_DEPLOYMENT.md`](doc/PRODUCTION_DEPLOYMENT.md) before any wider exposure.
+The application has **no authentication**. Keep it on a trusted private network unless access control is added in a separate reviewed change.
 
 ## Technology stack
 
@@ -32,64 +32,6 @@ The application has **no authentication**. Treat it as a private-network homewor
 | jQuery | 3.7.1 | Pinned CDN with SRI |
 
 Spring Boot 4 and Tomcat 11 were not used because CentOS Stream 10 ships Tomcat 10.1. Docker and Docker Compose are not used.
-
-## Project structure
-
-```text
-pom.xml
-.env.example
-deploy/systemd/tomcat.service.d/announcement-board.conf
-scripts/deploy-centos
-scripts/smoke-test-deployment
-scripts/acceptance-test
-scripts/describe-schema
-scripts/with-db-env
-src/main/java/com/example/announcement/
-  AnnouncementBoardApplication.java
-  ServletInitializer.java
-  controller/AnnouncementController.java
-  service/AnnouncementService.java
-  repository/AnnouncementRepository.java
-  domain/Announcement.java
-  dto/
-  exception/
-src/main/resources/
-  application.properties
-  db/migration/V1__create_announcements.sql
-  static/index.html
-  static/js/app.js
-  static/css/app.css
-src/test/java/com/example/announcement/
-doc/PROJECT_PLAN.md
-doc/DEPLOYMENT.md
-doc/PRODUCTION_DEPLOYMENT.md
-doc/ACCEPTANCE.md
-docs/images/
-```
-
-## Development environment
-
-Development runs on a **CentOS Stream 10 (aarch64)** VM. Docker and Docker Compose are **not** used. MySQL is installed directly on the VM.
-
-From a workstation, substitute the environment-specific connection values:
-
-```bash
-ssh -i "<ssh-key-path>" -o IdentitiesOnly=yes "<ssh-user>@<centos-host>"
-```
-
-Configure the VM's GitHub credentials outside this repository. The credential type, key filename, and SSH configuration are environment-specific. The application checkout is represented by this stub:
-
-```text
-<project-directory>
-```
-
-All builds, tests, database work, and application execution happen on this VM.
-
-```bash
-cd "<project-directory>"
-git checkout main   # or the current working branch
-git pull --ff-only
-```
 
 ## Database configuration
 
@@ -147,7 +89,7 @@ The packaged artifact is `target/announcement-board.war`.
 1. SSH to the CentOS VM and fast-forward the checkout.
 2. Change application code on the working branch.
 3. Run `python3 scripts/with-db-env ./mvnw -B test`.
-4. Deploy with `python3 scripts/deploy-centos` when the tree is clean.
+4. Package the WAR, then deploy it with `python3 scripts/deploy-centos`.
 5. Open the UI through the SSH tunnel described below.
 
 Do not run the application on a workstation against a separate local database. The authoritative environment is the VM.
@@ -157,12 +99,13 @@ Do not run the application on a workstation against a separate local database. T
 On the CentOS Tomcat host:
 
 ```bash
+python3 scripts/with-db-env ./mvnw -B clean package
 python3 scripts/deploy-centos
 ```
 
-That helper refuses a dirty Git tree, records the commit and WAR SHA-256, backs up the previous WAR outside `webapps`, replaces `/var/lib/tomcat/webapps/announcement-board.war`, and runs `scripts/smoke-test-deployment`. On startup Flyway applies pending migrations, then Hibernate validates the schema. Full install, rollback, and diagnostic steps are in [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md).
+The deployment helper uses the existing `target/announcement-board.war`. It backs up the installed WAR outside `webapps`, stops Tomcat, replaces the WAR and exploded application directory, starts Tomcat, and waits for the application URL to return HTTP 200. It does not build, run the smoke test, validate service configuration or network listeners, or roll back automatically. On startup Flyway applies pending migrations, then Hibernate validates the schema. Full install and manual rollback steps are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-This helper causes a short Tomcat outage. It is appropriate for the homework VM and for a single-node production host. It is not a zero-downtime procedure.
+This helper causes a short Tomcat outage. It is appropriate for the homework VM and other private single-node hosts. It is not a zero-downtime procedure.
 
 ## UI and API URLs
 
@@ -336,14 +279,13 @@ python3 scripts/acceptance-test http://127.0.0.1:8080/announcement-board
 python3 scripts/describe-schema
 ```
 
-`scripts/smoke-test-deployment` creates one uniquely titled `P6SMOKE-...` row and deletes that id. `scripts/acceptance-test` creates uniquely titled `P7ACCEPT-<token>` records, records their exact IDs, and deletes only those IDs. Neither helper deletes unrelated rows. Both return nonzero if any assertion fails. The evidence report is [`doc/ACCEPTANCE.md`](doc/ACCEPTANCE.md).
+`scripts/smoke-test-deployment` creates one uniquely titled `P6SMOKE-...` row and deletes that id. `scripts/acceptance-test` creates uniquely titled `P7ACCEPT-<token>` records, records their exact IDs, and deletes only those IDs. Neither helper deletes unrelated rows. Both return nonzero if any assertion fails. The evidence report is [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md).
 
 ## Documentation
 
-- [`doc/PROJECT_PLAN.md`](doc/PROJECT_PLAN.md) — design and required scope
-- [`doc/DEPLOYMENT.md`](doc/DEPLOYMENT.md) — CentOS development Tomcat runbook
-- [`doc/PRODUCTION_DEPLOYMENT.md`](doc/PRODUCTION_DEPLOYMENT.md) — production host guide (not the development VM)
-- [`doc/ACCEPTANCE.md`](doc/ACCEPTANCE.md) — acceptance evidence
+- [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) — design and required scope
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — clean CentOS setup and Tomcat deployment runbook
+- [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) — acceptance evidence
 
 ## Screenshots
 
@@ -394,5 +336,3 @@ These items are intentionally out of the homework submission. They are not imple
 - Audit history and soft delete
 - Docker, Docker Compose, or Kubernetes
 - Turning the private development VM into a public server
-
-A production-shaped Nginx/TLS/SELinux layout for a **separate** host is described in [`doc/PRODUCTION_DEPLOYMENT.md`](doc/PRODUCTION_DEPLOYMENT.md). That document does not add those capabilities to this repository’s runtime on the development VM.
